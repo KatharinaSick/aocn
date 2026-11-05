@@ -11,11 +11,12 @@ any point.
 The whole calendar tells one story: POLARIS-7, the dry AI of an Arctic research station, spends December
 watching a stranded crew break everything on her cluster. Players are the station's new engineer.
 
-This repository is the website. The challenges live in their own public repository and the `aocn`
-CLI is a separate project — both are out of scope here.
+This repository holds the website, its API and the `aocn` CLI (`cli/`). The challenges live in their
+own private repository and are out of scope here. The CLI is public and the same for every door: it
+never names a door's tools, checks or content, not even in examples or tests.
 
 ## Repository
-GitHub: `KatharinaSick/aocn.dev`
+GitHub: `KatharinaSick/aocn`
 
 ## Ways of Working
 This project is built in small, separately verifiable steps, not in big chunks. The point is that

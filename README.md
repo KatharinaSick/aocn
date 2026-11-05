@@ -8,11 +8,12 @@ fix with the `aocn` CLI.
 
 ## What's in this repo
 
-This repo holds the website and its API. The challenges and the `aocn` CLI live in their own repositories.
+This repo holds the website, its API and the `aocn` CLI. The challenges live in their own repository.
 
 ```
 web/    the website (Astro)
 api/    the API (Go)
+cli/    the aocn CLI (Go)
 infra/  the Google Cloud setup (OpenTofu)
 ```
 
@@ -28,7 +29,7 @@ devbox run web          # website on http://localhost:4321
 devbox run api          # API on http://localhost:8080
 ```
 
-Run the tests with `devbox run test`, and a full build with `devbox run build`.
+Run the tests with `devbox run test`, and a full build with `devbox run build`. Both include the CLI.
 
 ## Deployment
 
