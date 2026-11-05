@@ -1,0 +1,6 @@
+{
+  // The Codespace players open. The image brings the tools, the aocn CLI and the settings.
+  // A new version reaches players by bumping it here.
+  "name": "Advent of Cloud Native",
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.1.0"
+}

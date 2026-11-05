@@ -1,0 +1,38 @@
+name: Version check
+
+# Comments on a PR that changes the CLI without bumping cli/VERSION, since merging it would
+# release nothing. The comment goes away once it's bumped. PRs from forks can't comment, so
+# for them the result is only a warning in the run.
+on:
+  pull_request:
+
+# One run per PR at a time, so two pushes can't both add a comment.
+concurrency:
+  group: version-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The diff against the base branch needs their common history.
+          fetch-depth: 0
+
+      - name: Check versions
+        env:
+          PARTS: |
+            cli cli/VERSION cli
+          BASE: ${{ github.base_ref }}
+          COMMENT: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/scripts/version-check.sh

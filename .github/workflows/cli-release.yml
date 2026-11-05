@@ -1,0 +1,46 @@
+# Tags the commit cli/v<version> from cli/VERSION when it changes on main, so
+# `go install github.com/katharinasick/aocn/cli/cmd/aocn@v<version>` finds it. The CLI is a
+# module in a subfolder, so Go wants the folder in the tag. A version that's already tagged is
+# never tagged again.
+name: CLI release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/VERSION'
+      - '.github/workflows/cli-release.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: cli-release
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Tag the commit
+        id: tag
+        run: |
+          tag="cli/v$(tr -d '[:space:]' < cli/VERSION)"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "$tag exists"
+          else
+            git tag "$tag"
+            git push origin "refs/tags/$tag"
+          fi
+          echo "version=${tag#cli/}" >> "$GITHUB_OUTPUT"
+
+      # Asks the Go module proxy for the version, so it's there before the devcontainer image
+      # needs it and a broken tag shows up here.
+      - name: Check the module proxy
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: curl -fsS "https://proxy.golang.org/github.com/katharinasick/aocn/cli/@v/$VERSION.info"
