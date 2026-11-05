@@ -13,8 +13,10 @@ variable "region" {
   default     = "europe-west1"
 }
 
-variable "github_repository" {
-  description = "Repository allowed to deploy, as owner/name."
+# The ID rather than owner/name: renaming the repository keeps its ID, so deploys survive
+# a rename.
+variable "github_repository_id" {
+  description = "ID of the repository allowed to deploy (KatharinaSick/aocn)."
   type        = string
-  default     = "KatharinaSick/aocn.dev"
+  default     = "1385333130"
 }

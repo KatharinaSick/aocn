@@ -1,4 +1,4 @@
-module github.com/katharinasick/aocn.dev/api
+module github.com/katharinasick/aocn/api
 
 go 1.27
 

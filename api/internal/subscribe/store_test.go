@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/katharinasick/aocn.dev/api/internal/db"
+	"github.com/katharinasick/aocn/api/internal/db"
 )
 
 // testStore connects to TEST_DATABASE_URL, migrates it and empties the tables. The

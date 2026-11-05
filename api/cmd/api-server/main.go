@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/katharinasick/aocn.dev/api/internal/api"
-	"github.com/katharinasick/aocn.dev/api/internal/app"
-	"github.com/katharinasick/aocn.dev/api/internal/db"
-	"github.com/katharinasick/aocn.dev/api/internal/email"
-	"github.com/katharinasick/aocn.dev/api/internal/schedule"
-	"github.com/katharinasick/aocn.dev/api/internal/subscribe"
+	"github.com/katharinasick/aocn/api/internal/api"
+	"github.com/katharinasick/aocn/api/internal/app"
+	"github.com/katharinasick/aocn/api/internal/db"
+	"github.com/katharinasick/aocn/api/internal/email"
+	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/subscribe"
 )
 
 // shutdownTimeout bounds how long in-flight requests and the final span export get

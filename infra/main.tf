@@ -231,20 +231,21 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   attribute_mapping = {
     "google.subject"             = "assertion.sub"
     "attribute.repository"       = "assertion.repository"
+    "attribute.repository_id"    = "assertion.repository_id"
     "attribute.repository_owner" = "assertion.repository_owner"
     "attribute.ref"              = "assertion.ref"
   }
 
   # Without this, a workflow in any GitHub repository could present a valid token
   # to this provider.
-  attribute_condition = "assertion.repository == \"${var.github_repository}\""
+  attribute_condition = "assertion.repository_id == \"${var.github_repository_id}\""
 }
 
 # Planning is read-only, so any workflow run in this repository may do it.
 resource "google_service_account_iam_member" "github_plans" {
   service_account_id = google_service_account.infra_plan.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository_id/${var.github_repository_id}"
 }
 
 # Anything that can change something is scoped by ref, not by repository.

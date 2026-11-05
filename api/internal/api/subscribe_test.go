@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/katharinasick/aocn.dev/api/internal/email"
-	"github.com/katharinasick/aocn.dev/api/internal/subscribe"
+	"github.com/katharinasick/aocn/api/internal/email"
+	"github.com/katharinasick/aocn/api/internal/subscribe"
 )
 
 var (

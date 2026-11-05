@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/katharinasick/aocn.dev/api/internal/app"
-	"github.com/katharinasick/aocn.dev/api/internal/email"
-	"github.com/katharinasick/aocn.dev/api/internal/subscribe"
+	"github.com/katharinasick/aocn/api/internal/app"
+	"github.com/katharinasick/aocn/api/internal/email"
+	"github.com/katharinasick/aocn/api/internal/subscribe"
 )
 
 // The signup is double opt-in: an address is only added once someone who can read

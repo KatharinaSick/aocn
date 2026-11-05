@@ -3,7 +3,7 @@ package email
 import (
 	"context"
 
-	"github.com/katharinasick/aocn.dev/api/internal/app"
+	"github.com/katharinasick/aocn/api/internal/app"
 )
 
 // LogClient stands in for Resend in dev mode without an API key: it logs the

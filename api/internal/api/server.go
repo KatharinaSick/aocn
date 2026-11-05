@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/katharinasick/aocn.dev/api/internal/app"
+	"github.com/katharinasick/aocn/api/internal/app"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
