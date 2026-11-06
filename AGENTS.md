@@ -58,6 +58,18 @@ than slow progress.
 - **Style**: Use [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat:`, `fix:`,
   `chore:`, `docs:`).
 
+## CLI Versions
+- **`cli/VERSION`** holds the CLI's version (`X.Y.Z`, no `v`). A PR that changes the CLI bumps it:
+  patch for fixes, minor for something new. It stays below 1.0 until the commands settle, and
+  below 2.0 as long as possible, since Go wants the module path changed to `…/cli/v2` from then on.
+- Merging to main tags the commit `cli/vX.Y.Z` (`.github/workflows/cli-release.yml`), which is
+  what `go install …/cli/cmd/aocn@vX.Y.Z` finds. Nobody tags by hand, and a version is never
+  tagged twice.
+- A PR that changes `cli/` (READMEs and tests aside) without a bump gets a comment
+  (`.github/workflows/version-check.yml`).
+- Players get a new CLI through the devcontainer image: once it's built with the new version,
+  bump the image in `.devcontainer/devcontainer.json`.
+
 ## Website Tech Stack
 - **Framework**: Astro 7, with Vue 3 islands for anything interactive (`@astrojs/vue`).
 - **Language**: TypeScript, checked with `astro check`.
