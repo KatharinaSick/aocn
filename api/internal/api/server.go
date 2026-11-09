@@ -32,14 +32,15 @@ func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors) http.H
 
 func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, doors Doors) {
 	mux.Handle("GET /health", handleHealth())
-	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow, tooManySignups)(handleSubscribe(log, subscriptions)))
+	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow)(handleSubscribe(log, subscriptions)))
 	// Confirming is limited too: a valid token can be replayed until it expires, and
 	// every replay costs a database row and two Resend calls.
-	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow, tooManySignups)(handleConfirmSubscription(log, subscriptions)))
-	// The page isn't limited: the website asks for it, from Netlify's few addresses, and
-	// caches what it renders. Every bundle download is streamed from the bucket, uncached.
+	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow)(handleConfirmSubscription(log, subscriptions)))
+	// Neither door endpoint is limited. The page is asked for by the website, from Netlify's
+	// few addresses. Bundles are small, and many players may share an address (a workshop,
+	// Codespaces), all opening the door at 06:00; a limit by IP would turn them away first.
 	mux.Handle("GET /doors/{door}", handleDoorPage(log, doors))
-	mux.Handle("GET /doors/{door}/bundle", limitByIP(bundleLimit, bundleWindow, tooManyBundles)(handleDoorBundle(log, doors)))
+	mux.Handle("GET /doors/{door}/bundle", handleDoorBundle(log, doors))
 }
 
 // spanName labels spans by the matched route pattern (e.g. "GET /health"). When no

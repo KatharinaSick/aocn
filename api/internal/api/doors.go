@@ -19,14 +19,6 @@ import (
 // door is open, so at 06:00 nothing runs: requests just get a different answer. The website
 // and the CLI both ask here, and nowhere else decides.
 
-const (
-	// Generous, for a workshop behind one address where everyone runs aocn open at once.
-	// It stops a script that downloads in a loop, not a determined caller: the address
-	// comes from X-Forwarded-For (see clientIP).
-	bundleLimit  = 120
-	bundleWindow = time.Hour
-)
-
 // doorNumber is how a door is named in a path: 1, 2, … 24, never 01 or +1. One spelling per
 // door, so there's one URL to cache, log and link to.
 var doorNumber = regexp.MustCompile(`^[1-9][0-9]*$`)
@@ -135,11 +127,6 @@ func handleDoorBundle(log app.Logger, d Doors) http.Handler {
 			panic(http.ErrAbortHandler)
 		}
 	})
-}
-
-func tooManyBundles(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSONError(w, http.StatusTooManyRequests, "too many downloads from here, try again in an hour")
 }
 
 // writeMissingDoor answers for an open door whose files can't be read. That's our mistake,

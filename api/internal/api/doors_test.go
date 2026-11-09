@@ -157,30 +157,6 @@ func TestBrokenBundleAbortsTheResponse(t *testing.T) {
 	get(doorsAt(t, door1OpensAt, brokenStorage{}), "/doors/1/bundle")
 }
 
-func TestBundleDownloadsAreLimited(t *testing.T) {
-	h := doorsAt(t, door1OpensAt, uploaded)
-	download := func() *httptest.ResponseRecorder {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/doors/1/bundle", nil)
-		req.Header.Set("X-Forwarded-For", "203.0.113.7")
-		h.ServeHTTP(rec, req)
-		return rec
-	}
-	for i := range bundleLimit {
-		if rec := download(); rec.Code != http.StatusOK {
-			t.Fatalf("download %d: status %d", i+1, rec.Code)
-		}
-	}
-	rec := download()
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("over the limit: status %d, want 429", rec.Code)
-	}
-	var body struct{ Error string }
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Error == "" {
-		t.Errorf("over the limit: body %q, want a JSON error the CLI can show", rec.Body.String())
-	}
-}
-
 // An open door doesn't open the next one.
 func TestOnlyOpenDoorsAreServed(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, uploaded)
