@@ -29,6 +29,13 @@ type Config struct {
 		Path string `yaml:"path"`
 	} `yaml:"schedule"`
 
+	// Doors says where the challenges repository uploaded the doors: a GCS bucket on Cloud Run, a folder laid
+	// out like it locally.
+	Doors struct {
+		Bucket string `yaml:"bucket"`
+		Dir    string `yaml:"dir"`
+	} `yaml:"doors"`
+
 	Site struct {
 		URL string `yaml:"url"`
 	} `yaml:"site"`
@@ -82,6 +89,15 @@ func (c *Config) validate(onCloudRun bool) error {
 	// local one.
 	if c.Database.URL == "" {
 		return errors.New("database.url is required")
+	}
+
+	switch {
+	case c.Doors.Bucket != "" && c.Doors.Dir != "":
+		return errors.New("doors: set bucket or dir, not both")
+	case c.Doors.Bucket == "" && c.Doors.Dir == "":
+		return errors.New("doors.bucket or doors.dir is required")
+	case c.Doors.Dir != "" && onCloudRun:
+		return errors.New("doors.dir must not be set on Cloud Run, use doors.bucket")
 	}
 
 	if c.Dev {

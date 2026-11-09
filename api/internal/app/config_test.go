@@ -8,6 +8,7 @@ func fullConfig() Config {
 	c.Resend.APIKey = "re_test"
 	c.Resend.SegmentID = "seg_1"
 	c.Subscribe.SigningKey = "key"
+	c.Doors.Bucket = "doors"
 	return c
 }
 
@@ -19,6 +20,7 @@ func TestValidateRequiresSecretsOutsideDevMode(t *testing.T) {
 		"no segment":     func(c *Config) { c.Resend.SegmentID = "" },
 		"no signing key": func(c *Config) { c.Subscribe.SigningKey = "" },
 		"no database":    func(c *Config) { c.Database.URL = "" },
+		"no doors":       func(c *Config) { c.Doors.Bucket = "" },
 	}
 	for name, change := range cases {
 		for _, onCloudRun := range []bool{true, false} {
@@ -46,6 +48,7 @@ func TestValidateDevMode(t *testing.T) {
 	}
 
 	empty.Database.URL = "postgres://localhost/aocn"
+	empty.Doors.Dir = "../build"
 	if err := empty.validate(false); err != nil {
 		t.Errorf("dev mode without secrets: %v", err)
 	}
@@ -58,5 +61,23 @@ func TestValidateDevMode(t *testing.T) {
 	keyOnly.Resend.APIKey = "re_test"
 	if err := keyOnly.validate(false); err == nil {
 		t.Error("dev mode with an API key but no segment accepted")
+	}
+}
+
+func TestValidateDoors(t *testing.T) {
+	both := fullConfig()
+	both.Doors.Dir = "../build"
+	if err := both.validate(false); err == nil {
+		t.Error("bucket and dir both set accepted")
+	}
+
+	dir := fullConfig()
+	dir.Doors.Bucket = ""
+	dir.Doors.Dir = "../build"
+	if err := dir.validate(false); err != nil {
+		t.Errorf("dir outside Cloud Run: %v", err)
+	}
+	if err := dir.validate(true); err == nil {
+		t.Error("dir accepted on Cloud Run")
 	}
 }

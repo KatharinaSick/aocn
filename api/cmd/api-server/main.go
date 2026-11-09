@@ -14,6 +14,7 @@ import (
 	"github.com/katharinasick/aocn/api/internal/api"
 	"github.com/katharinasick/aocn/api/internal/app"
 	"github.com/katharinasick/aocn/api/internal/db"
+	"github.com/katharinasick/aocn/api/internal/doors"
 	"github.com/katharinasick/aocn/api/internal/email"
 	"github.com/katharinasick/aocn/api/internal/schedule"
 	"github.com/katharinasick/aocn/api/internal/subscribe"
@@ -37,9 +38,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Nothing reads the schedule yet. Loading it here means a missing or broken
-	// schedule.yaml stops the API at startup, not when the first door is asked for.
-	if _, err := schedule.Load(cfg.Schedule.Path); err != nil {
+	// A missing or broken schedule.yaml stops the API at startup, not when the first
+	// door is asked for.
+	sched, err := schedule.Load(cfg.Schedule.Path)
+	if err != nil {
 		log.Error("Failed to load the schedule. Terminating.", "error", err)
 		os.Exit(1)
 	}
@@ -58,9 +60,17 @@ func main() {
 	}
 	defer pool.Close()
 
+	doorStorage, err := doorStorage(ctx, cfg)
+	if err != nil {
+		log.Error("Failed to connect to the doors' storage. Terminating.", "error", err)
+		flush(log, shutdownOTel)
+		os.Exit(1)
+	}
+	doorsAPI := api.Doors{Schedule: sched, Storage: doorStorage, Pages: &doors.Pages{Storage: doorStorage}}
+
 	httpServer := &http.Server{
 		Addr:         net.JoinHostPort("", cfg.Server.Port),
-		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool))),
+		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
@@ -102,6 +112,15 @@ func flush(log app.Logger, shutdownOTel func(context.Context) error) {
 	if err := shutdownOTel(ctx); err != nil {
 		log.Error("Failed to flush telemetry", "error", err)
 	}
+}
+
+// doorStorage is the bucket on Cloud Run and a local folder in dev; ParseConfig has made
+// sure exactly one is set.
+func doorStorage(ctx context.Context, cfg *app.Config) (doors.Storage, error) {
+	if cfg.Doors.Dir != "" {
+		return doors.Dir(cfg.Doors.Dir), nil
+	}
+	return doors.NewBucket(ctx, cfg.Doors.Bucket)
 }
 
 // subscriptions wires the signup to Resend. In dev mode, missing secrets are replaced
