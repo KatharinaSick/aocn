@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/katharinasick/aocn/cli/internal/api"
 	"github.com/katharinasick/aocn/cli/internal/check"
 	"github.com/katharinasick/aocn/cli/internal/cluster"
 	"github.com/katharinasick/aocn/cli/internal/door"
@@ -50,7 +52,12 @@ over with the original files, and moves yours aside.`,
 				return fmt.Errorf("door must be a number like 1, got %q", args[0])
 			}
 			if bundle == "" {
-				return fmt.Errorf("downloading doors isn't built yet, use --bundle")
+				downloaded, err := download(cmd, number)
+				if err != nil {
+					return err
+				}
+				defer os.Remove(downloaded)
+				bundle = downloaded
 			}
 			folder, err := door.BundleFolder(bundle, number)
 			if err != nil {
@@ -100,6 +107,32 @@ over with the original files, and moves yours aside.`,
 	cmd.Flags().StringVar(&bundle, "bundle", "", "use a local bundle instead of downloading it")
 	cmd.Flags().BoolVar(&reset, "reset", false, "start over with the original files, and move yours aside")
 	return cmd
+}
+
+// download fetches the door's bundle into a temporary file and returns its path. Before the
+// door opens, it says when to come back.
+func download(cmd *cobra.Command, number int) (string, error) {
+	f, err := os.CreateTemp("", fmt.Sprintf("aocn-door-%02d-*.tar.gz", number))
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "Downloading door %d…\n", number)
+	err = api.DownloadBundle(cmd.Context(), number, f)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(f.Name())
+		var closed *api.ClosedError
+		switch {
+		case errors.As(err, &closed):
+			return "", fmt.Errorf("not yet: %w. See you then", closed)
+		case errors.Is(err, api.ErrNoDoor):
+			return "", fmt.Errorf("there is no door %d", number)
+		}
+		return "", err
+	}
+	return f.Name(), nil
 }
 
 // askReset warns that the door was opened before and asks whether to start over. Without a
