@@ -32,6 +32,8 @@ func TestParsePageRejects(t *testing.T) {
 		"trailing ---":     "title: t\nstory: s\n---\n",
 		"not a mapping":    "- title\n",
 		"blank title only": "title: \"  \"\nstory: s\n",
+		"key twice":        "title: t\nstory: s\ntitle: u\n",
+		"list as text":     "title: t\nstory: s\nlog: [a]\n",
 	}
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
