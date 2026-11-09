@@ -38,6 +38,21 @@ output "state_bucket" {
   value       = google_storage_bucket.state.name
 }
 
+output "doors_bucket" {
+  description = "Bucket holding every door's bundle and page."
+  value       = google_storage_bucket.doors.name
+}
+
+output "challenges_wif_provider" {
+  description = "Workload Identity Federation provider the challenges repository's workflows authenticate against."
+  value       = google_iam_workload_identity_pool_provider.github_challenges.name
+}
+
+output "door_uploader_service_account" {
+  description = "Email of the service account the challenges repository uploads doors as."
+  value       = google_service_account.door_uploader.email
+}
+
 output "api_url" {
   description = "HTTPS URL the Cloud Run service is served at."
   value       = google_cloud_run_v2_service.api.uri

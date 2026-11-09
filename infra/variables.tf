@@ -20,3 +20,10 @@ variable "github_repository_id" {
   type        = string
   default     = "1385333130"
 }
+
+# By ID, like the repository above. Its main branch uploads doors and can do nothing else.
+variable "challenges_repository_id" {
+  description = "ID of the private repository that uploads doors (KatharinaSick/aocn-challenges)."
+  type        = string
+  default     = "1426674968"
+}
