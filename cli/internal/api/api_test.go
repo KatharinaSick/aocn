@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -58,10 +59,36 @@ func TestDownloadUnknownDoor(t *testing.T) {
 	}
 }
 
+// Errors name the API that answered, so a local one isn't mistaken for aocn.dev.
 func TestDownloadServerError(t *testing.T) {
 	serve(t, http.StatusServiceUnavailable, `{"error":"try again"}`)
-	if err := DownloadBundle(context.Background(), 2, &bytes.Buffer{}); err == nil || err.Error() != "aocn.dev: try again" {
+	err := DownloadBundle(context.Background(), 2, &bytes.Buffer{})
+	if want := host() + ": try again"; err == nil || err.Error() != want {
+		t.Errorf("got %v, want %q", err, want)
+	}
+	if strings.Contains(host(), "aocn.dev") {
+		t.Errorf("host() = %q for a local API", host())
+	}
+}
+
+func TestDownloadUnreachable(t *testing.T) {
+	t.Setenv("AOCN_API_URL", "http://127.0.0.1:1")
+	err := DownloadBundle(context.Background(), 2, &bytes.Buffer{})
+	if err == nil || !strings.HasPrefix(err.Error(), "couldn't reach 127.0.0.1:1: ") {
 		t.Errorf("got %v", err)
+	}
+}
+
+// A download that ends before the length the API announced is an error, not a bundle.
+func TestDownloadCutOff(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte("half"))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("AOCN_API_URL", srv.URL)
+	if err := DownloadBundle(context.Background(), 2, &bytes.Buffer{}); err == nil {
+		t.Error("a cut-off download was accepted")
 	}
 }
 
