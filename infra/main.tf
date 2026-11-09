@@ -350,11 +350,20 @@ resource "google_iam_workload_identity_pool_provider" "github_challenges" {
     "attribute.ref"           = "assertion.ref"
   }
 
-  attribute_condition = "assertion.repository_id == \"${var.challenges_repository_id}\""
+  # Only the doors workflow, as it is on main (pushed or run by hand). The ref alone would
+  # admit any other workflow that runs on main too: another workflow_dispatch one, or a
+  # pull_request_target one, which runs with main's ref while it may look at a pull request's
+  # code. Matched by suffix, so renaming the owner or the repository doesn't lock uploads out;
+  # the ID pins the repository. One line, so the provider stores exactly what's written here.
+  attribute_condition = join(" && ", [
+    "assertion.repository_id == \"${var.challenges_repository_id}\"",
+    "assertion.job_workflow_ref.endsWith(\"/.github/workflows/doors.yaml@refs/heads/main\")",
+  ])
 }
 
 # Only main uploads: merging is the decision to publish a door. Pull requests get
-# refs/pull/N/merge and can't reach it, whatever their workflow file says.
+# refs/pull/N/merge and can't reach it, whatever their workflow file says. The provider's
+# condition already says so; this keeps it true if the condition is ever loosened.
 resource "google_service_account_iam_member" "github_challenges_main_uploads" {
   service_account_id = google_service_account.door_uploader.name
   role               = "roles/iam.workloadIdentityUser"

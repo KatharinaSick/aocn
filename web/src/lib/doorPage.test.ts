@@ -35,7 +35,14 @@ describe('readDoorAnswer', () => {
   it.each([
     [503, { error: 'try again' }],
     [500, null],
+    [429, { error: 'slow down' }],
+  ])('reads %i as unavailable', (status, body) => {
+    expect(readDoorAnswer(status, body)).toEqual({ state: 'unavailable' });
+  });
+
+  it.each([
     [200, { door: 1 }],
+    [400, null],
   ])('throws on %i', (status, body) => {
     expect(() => readDoorAnswer(status, body)).toThrow();
   });
@@ -47,13 +54,20 @@ describe('fetchDoor', () => {
 
   it('asks the API for the door', async () => {
     const fetchFn = answering(200, openBody);
-    expect((await fetchDoor('http://api', '1', fetchFn)).state).toBe('open');
+    expect((await fetchDoor('http://api', '1', 12, fetchFn)).state).toBe('open');
     expect(fetchFn).toHaveBeenCalledWith('http://api/doors/1', expect.anything());
   });
 
-  it.each(['0', '01', '1x', '../health', '-1', '100', ''])('never asks the API about %j', async (door) => {
+  it('reads an API it cannot reach as unavailable', async () => {
+    const fetchFn = vi.fn(async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    expect(await fetchDoor('http://api', '1', 12, fetchFn)).toEqual({ state: 'unavailable' });
+  });
+
+  it.each(['0', '01', '+1', '1x', '../health', '-1', '100', '', '13', '50'])('never asks the API about %j', async (door) => {
     const fetchFn = answering(200, openBody);
-    expect(await fetchDoor('http://api', door, fetchFn)).toEqual({ state: 'missing' });
+    expect(await fetchDoor('http://api', door, 12, fetchFn)).toEqual({ state: 'missing' });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
@@ -73,6 +87,10 @@ describe('doorCacheHeaders', () => {
 
   it.each([0, 999, -5000])('does not cache a closed door %i ms before its opening', (ms) => {
     expect(doorCacheHeaders(closed, new Date(opensAt.getTime() - ms))).toEqual({ 'Cache-Control': 'no-store' });
+  });
+
+  it('never caches an unavailable door', () => {
+    expect(doorCacheHeaders({ state: 'unavailable' }, opensAt)).toEqual({ 'Cache-Control': 'no-store' });
   });
 
   it('keeps an open door longer', () => {

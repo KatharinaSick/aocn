@@ -7,58 +7,84 @@
 // 404 page, like a door that doesn't exist.
 //
 // No countdown yet: a closed door is the 404 page for now.
+//
+// When the API can't answer (down, or an open door's files unreadable), the page says to
+// come back in a few minutes, with a 503 and no caching. That tells nobody more than the 404
+// would: the API only fails this way for a door that's open, or for every door at once. Only
+// doors in the schedule get there; any other number is a 404 without asking the API.
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
+import { DOOR_COUNT } from '../../lib/doors';
 
 export const prerender = false;
 
-const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '');
+const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '', DOOR_COUNT);
 const cacheHeaders = doorCacheHeaders(answer, new Date());
-if (answer.state !== 'open') {
+if (answer.state === 'closed' || answer.state === 'missing') {
   // An empty 404 makes Astro answer with the prerendered 404 page.
   return new Response(null, { status: 404, headers: cacheHeaders });
+}
+if (answer.state === 'unavailable') {
+  Astro.response.status = 503;
+  // Without a hint, crawlers and the CDN might come back whenever; a few minutes is right.
+  Astro.response.headers.set('Retry-After', '120');
 }
 for (const [name, value] of Object.entries(cacheHeaders)) {
   Astro.response.headers.set(name, value);
 }
 
-const { page } = answer;
-const number = String(page.door).padStart(2, '0');
+const page = answer.state === 'open' ? answer.page : undefined;
+// fetchDoor only answers for a door in the schedule, so the parameter is one here.
+const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 ---
 
-<BaseLayout
-  title={`door ${number} · ${page.title}`}
-  description={doorDescription(page.story)}
-  pola={{ mood: 'annoyed', message: `Door ${number} is open. Please do not break anything else.` }}
->
-  <TextPage command={`$ aocn open ${page.door}`} title={`door ${number} · ${page.title}`}>
-    <div class="doorStory">
-      {paragraphs(page.story).map((p) => (
-        <p>{p}</p>
-      ))}
-    </div>
-    {
-      page.log && (
-        <blockquote class="doorLog">
-          {paragraphs(page.log).map((p) => (
+{
+  page ? (
+    <BaseLayout
+      title={`door ${number} · ${page.title}`}
+      description={doorDescription(page.story)}
+      pola={{ mood: 'annoyed', message: `Door ${number} is open. Please do not break anything else.` }}
+    >
+      <TextPage command={`$ aocn open ${page.door}`} title={`door ${number} · ${page.title}`}>
+        <div class="doorStory">
+          {paragraphs(page.story).map((p) => (
             <p>{p}</p>
           ))}
-          <footer class="doorLogSignature">— POLARIS-7</footer>
-        </blockquote>
-      )
-    }
-    {
-      page.videoId && (
+        </div>
+        {page.log && (
+          <blockquote class="doorLog">
+            {paragraphs(page.log).map((p) => (
+              <p>{p}</p>
+            ))}
+            <footer class="doorLogSignature">— POLARIS-7</footer>
+          </blockquote>
+        )}
+        {page.videoId && (
+          <p>
+            <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(page.videoId)}`} target="_blank" rel="noopener">
+              watch the interview
+            </a>
+          </p>
+        )}
+      </TextPage>
+    </BaseLayout>
+  ) : (
+    <BaseLayout
+      title={`door ${number}`}
+      description="This door can't be shown right now."
+      noindex
+      pola={{ mood: 'annoyed', message: 'Something is broken that is not you. For once.' }}
+    >
+      <TextPage command={`$ aocn open ${Number(number)}`} title={`door ${number} · stuck`}>
+        <p>This door can't be shown right now. Try again in a few minutes.</p>
         <p>
-          <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(page.videoId)}`} target="_blank" rel="noopener">
-            watch the interview
-          </a>
+          <a href="/">back home</a>
         </p>
-      )
-    }
-  </TextPage>
-</BaseLayout>
+      </TextPage>
+    </BaseLayout>
+  )
+}
 
 <style>
   /* Brighter than other text pages: a story is long enough to reach the aurora at tablet

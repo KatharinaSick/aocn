@@ -68,6 +68,9 @@ func main() {
 	}
 	doorsAPI := api.Doors{Schedule: sched, Storage: doorStorage, Pages: &doors.Pages{Storage: doorStorage}}
 
+	// WriteTimeout is also the longest a bundle download may take: past it the connection
+	// drops and aocn open reports a broken download. Fine while bundles are small; bigger
+	// bundles or slower players mean raising it, or handing out signed bucket URLs instead.
 	httpServer := &http.Server{
 		Addr:         net.JoinHostPort("", cfg.Server.Port),
 		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI),

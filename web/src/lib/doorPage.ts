@@ -19,15 +19,29 @@ export interface DoorPage {
 export type DoorAnswer =
   | { state: 'open'; page: DoorPage }
   | { state: 'closed'; door: number; opensAt: Date }
-  | { state: 'missing' };
+  | { state: 'missing' }
+  /** The door may be open, but the API can't serve it right now: down, or its files unreadable. */
+  | { state: 'unavailable' };
 
-/** Asks the API about a door. Anything other than a clear answer throws. */
-export async function fetchDoor(apiUrl: string, door: string, fetchFn: typeof fetch = fetch): Promise<DoorAnswer> {
+/** Asks the API about a door, one of doorCount. An answer that makes no sense throws. */
+export async function fetchDoor(
+  apiUrl: string,
+  door: string,
+  doorCount: number,
+  fetchFn: typeof fetch = fetch,
+): Promise<DoorAnswer> {
   // Only plain door numbers reach the API, so nothing else can be smuggled into its path.
-  if (!/^[1-9][0-9]?$/.test(door)) {
+  // The API accepts the same spelling only: 1, never 01. A door that isn't in the schedule
+  // is missing without asking, so it's a 404 even while the API is down, never "stuck".
+  if (!/^[1-9][0-9]?$/.test(door) || Number(door) > doorCount) {
     return { state: 'missing' };
   }
-  const response = await fetchFn(`${apiUrl}/doors/${door}`, { headers: { Accept: 'application/json' } });
+  let response: Response;
+  try {
+    response = await fetchFn(`${apiUrl}/doors/${door}`, { headers: { Accept: 'application/json' } });
+  } catch {
+    return { state: 'unavailable' };
+  }
   return readDoorAnswer(response.status, await response.json().catch(() => null));
 }
 
@@ -39,6 +53,9 @@ export function readDoorAnswer(status: number, body: unknown): DoorAnswer {
       return { state: 'closed', door: b.door, opensAt: new Date(b.opensAt) };
     }
     return { state: 'missing' };
+  }
+  if (status >= 500 || status === 429) {
+    return { state: 'unavailable' };
   }
   if (status !== 200 || typeof b.title !== 'string' || typeof b.story !== 'string' || typeof b.door !== 'number') {
     throw new Error(`The API answered ${status} for a door`);
@@ -78,6 +95,10 @@ export function doorCacheHeaders(answer: DoorAnswer, now: Date): Record<string, 
       break;
     case 'missing':
       seconds = CLOSED_DOOR_CDN_SECONDS;
+      break;
+    case 'unavailable':
+      // The next request should ask again: it may well work.
+      seconds = 0;
       break;
   }
   if (seconds <= 0) {

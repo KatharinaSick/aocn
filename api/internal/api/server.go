@@ -36,6 +36,9 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	// Confirming is limited too: a valid token can be replayed until it expires, and
 	// every replay costs a database row and two Resend calls.
 	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow)(handleConfirmSubscription(log, subscriptions)))
+	// Neither door endpoint is limited. The page is asked for by the website, from Netlify's
+	// few addresses. Bundles are small, and many players may share an address (a workshop,
+	// Codespaces), all opening the door at 06:00; a limit by IP would turn them away first.
 	mux.Handle("GET /doors/{door}", handleDoorPage(log, doors))
 	mux.Handle("GET /doors/{door}/bundle", handleDoorBundle(log, doors))
 }

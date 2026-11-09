@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -29,13 +30,24 @@ christmasEve:
 
 type memoryStorage map[string]string
 
-func (s memoryStorage) Open(_ context.Context, name string) (io.ReadCloser, error) {
+func (s memoryStorage) Open(_ context.Context, name string) (doors.File, error) {
 	data, ok := s[name]
 	if !ok {
-		return nil, doors.ErrNotFound
+		return doors.File{}, doors.ErrNotFound
 	}
-	return io.NopCloser(strings.NewReader(data)), nil
+	return doors.File{ReadCloser: io.NopCloser(strings.NewReader(data)), Size: int64(len(data))}, nil
 }
+
+// brokenStorage hands out a bundle that fails halfway through.
+type brokenStorage struct{}
+
+func (brokenStorage) Open(context.Context, string) (doors.File, error) {
+	return doors.File{ReadCloser: io.NopCloser(io.MultiReader(strings.NewReader("half"), failingReader{})), Size: 8}, nil
+}
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
 
 // Both doors are uploaded, as they will be weeks before December.
 var uploaded = memoryStorage{
@@ -130,6 +142,19 @@ func TestOpenDoorBundle(t *testing.T) {
 	if got := rec.Header().Get("Content-Type"); got != "application/gzip" {
 		t.Errorf("Content-Type %q", got)
 	}
+	if got := rec.Header().Get("Content-Length"); got != "8" {
+		t.Errorf("Content-Length %q, want 8", got)
+	}
+}
+
+// A bundle that can't be read to the end must not look like a complete download.
+func TestBrokenBundleAbortsTheResponse(t *testing.T) {
+	defer func() {
+		if r := recover(); r != http.ErrAbortHandler {
+			t.Errorf("recovered %v, want http.ErrAbortHandler", r)
+		}
+	}()
+	get(doorsAt(t, door1OpensAt, brokenStorage{}), "/doors/1/bundle")
 }
 
 // An open door doesn't open the next one.
@@ -145,7 +170,9 @@ func TestOnlyOpenDoorsAreServed(t *testing.T) {
 
 func TestUnknownDoors(t *testing.T) {
 	h := doorsAt(t, door2OpensAt.Add(time.Hour), uploaded)
-	for _, path := range []string{"/doors/0", "/doors/3", "/doors/-1", "/doors/one", "/doors/01x", "/doors/3/bundle"} {
+	for _, path := range []string{"/doors/0", "/doors/3", "/doors/-1", "/doors/one", "/doors/01x", "/doors/3/bundle",
+		// One spelling per door: these all parse as 1, which is open.
+		"/doors/01", "/doors/+1", "/doors/1.0", "/doors/%201", "/doors/01/bundle", "/doors/+1/bundle"} {
 		rec := get(h, path)
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", path, rec.Code)

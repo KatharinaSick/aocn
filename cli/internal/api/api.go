@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -24,6 +25,15 @@ func BaseURL() string {
 		return strings.TrimSuffix(u, "/")
 	}
 	return defaultURL
+}
+
+// host names the API in errors: aocn.dev normally, localhost:8080 when AOCN_API_URL points
+// at a local API, so an error says which one couldn't be reached.
+func host() string {
+	if u, err := url.Parse(BaseURL()); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return BaseURL()
 }
 
 // ClosedError means the door exists but isn't open yet.
@@ -54,7 +64,7 @@ func DownloadBundle(ctx context.Context, door int, w io.Writer) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("couldn't reach aocn.dev: %w", err)
+		return fmt.Errorf("couldn't reach %s: %w", host(), err)
 	}
 	defer resp.Body.Close()
 
@@ -82,8 +92,8 @@ func responseError(resp *http.Response) error {
 	case resp.StatusCode == http.StatusNotFound:
 		return ErrNoDoor
 	case body.Error != "":
-		return fmt.Errorf("aocn.dev: %s", body.Error)
+		return fmt.Errorf("%s: %s", host(), body.Error)
 	default:
-		return fmt.Errorf("aocn.dev answered %s, try again in a few minutes", resp.Status)
+		return fmt.Errorf("%s answered %s, try again in a few minutes", host(), resp.Status)
 	}
 }
