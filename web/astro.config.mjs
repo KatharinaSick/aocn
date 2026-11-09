@@ -15,6 +15,11 @@ const isBuild = process.argv.includes('build');
 // build time, because an on-demand page cannot read the build's environment.
 const countVisits = process.env.CONTEXT === 'production';
 
+// Where the door page asks the API, from the server. netlify.toml sets the Cloud Run URL;
+// locally it's the API from `devbox run api`. Not /api/*: that proxy is for browsers, and a
+// function calling back into its own site would take a detour through Netlify's edge.
+const apiUrl = process.env.API_URL || 'http://localhost:8080';
+
 // Pages with `noindex` in BaseLayout. They stay out of the sitemap too; keep the two in step.
 const noindexPaths = ['/404', '/design-system', '/subscribe/confirm'];
 
@@ -37,6 +42,9 @@ export default defineConfig({
   // Canonical URLs and social image URLs are built from this.
   site: 'https://aocn.dev',
   adapter: isBuild ? netlify() : undefined,
+  // The accessibility tests render on-demand pages with `astro dev`, where the toolbar
+  // would be tested as if it were part of the page.
+  devToolbar: { enabled: process.env.AOCN_E2E !== 'true' },
   // Vue 3 islands for anything interactive; everything else stays plain Astro.
   integrations: [
     vue(),
@@ -48,6 +56,7 @@ export default defineConfig({
   vite: {
     define: {
       'import.meta.env.COUNT_VISITS': JSON.stringify(countVisits),
+      'import.meta.env.API_URL': JSON.stringify(apiUrl),
     },
     server: {
       proxy: {

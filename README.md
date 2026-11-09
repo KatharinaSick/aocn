@@ -29,6 +29,11 @@ devbox run web          # website on http://localhost:4321
 devbox run api          # API on http://localhost:8080
 ```
 
+The API serves doors from `../aocn-challenges/build`, a checkout of the private challenges
+repository next to this one, after `make bundle` there. To see a door before December, move its
+date in `schedule.yaml` (and don't commit that). `aocn open` asks the API at
+`$AOCN_API_URL`, `https://aocn.dev/api` when unset: `AOCN_API_URL=http://localhost:8080 aocn open 1`.
+
 Run the tests with `devbox run test`, and a full build with `devbox run build`. Both include the CLI.
 
 ## Deployment

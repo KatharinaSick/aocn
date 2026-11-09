@@ -103,7 +103,9 @@ Follows the same stack as `KatharinaSick/clubrizer`:
   (`.github/workflows/web-ci.yml`) instead of in the build, where Netlify would download Chromium
   on every deploy. `npm run test:a11y` (after `npm run build`) runs axe, a keyboard check and a
   contrast check against the real sky (aurora at its worst, 320–1440px) on every prerendered
-  page in `dist/`, so a new page is covered without touching the test.
+  page in `dist/`, so a new page is covered without touching the test. On-demand pages aren't in `dist/`: the
+  test renders them with `astro dev` against a fake API with a made-up door (`web/e2e/fakeApi.ts`),
+  and lists them in `onDemandPages` in `web/e2e/a11y.e2e.ts`.
 - Logic with rules (the schedule, vim commands, focus movement, the calendar feed) lives in
   `web/src/lib/`, free of the DOM, so it can be tested. Components only carry it out.
 
@@ -159,8 +161,14 @@ Follows the same stack as `KatharinaSick/clubrizer`:
   auth decisions and no database access — it fetches JSON from the Go API and renders the same Astro
   layout every other page uses. Rendering it in Go instead would mean a second copy of the layout,
   header, footer and class names in `html/template`, free to drift from the real site.
-  Keep it that way: no logic in the function, and no second on-demand page unless it genuinely needs
+  Keep it that way: no logic in the function, and no other on-demand page unless it genuinely needs
   per-request HTML.
+- **Door pages (`/doors/<n>`) are the second on-demand page**, for the same reason plus gating: a
+  door's content must not be in the build before it opens, and nothing may need a build at 06:00.
+  The function asks `GET /doors/{n}` (at `API_URL`, the Cloud Run URL from `netlify.toml`) and
+  renders what it gets. The API decides whether the door is open; a door that isn't answers with
+  the 404 page. Door content never lives in this repository: it's uploaded to the bucket from the
+  private challenges repository.
 - Load the Netlify adapter only for `astro build`. `astro dev` renders on-demand pages itself, and
   loading the adapter in dev pulls in Netlify's platform emulation for features this site does not
   use. If the site ever does use one — the Image CDN for social images, or Blobs-backed sessions —

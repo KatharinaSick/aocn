@@ -1,0 +1,86 @@
+---
+// One door: its story, POLARIS-7's log and the interview, from the door's page.yaml.
+//
+// Door gating: rendered on each request from GET /doors/{n}, never at build time, so a
+// door's content can't be in the build before it opens. The API decides whether the door is
+// open; this page only shows what it gets. A door that isn't open answers with exactly the
+// 404 page, like a door that doesn't exist.
+//
+// No countdown yet: a closed door is the 404 page for now.
+import TextPage from '../../components/TextPage.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
+
+export const prerender = false;
+
+const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '');
+const cacheHeaders = doorCacheHeaders(answer, new Date());
+if (answer.state !== 'open') {
+  // An empty 404 makes Astro answer with the prerendered 404 page.
+  return new Response(null, { status: 404, headers: cacheHeaders });
+}
+for (const [name, value] of Object.entries(cacheHeaders)) {
+  Astro.response.headers.set(name, value);
+}
+
+const { page } = answer;
+const number = String(page.door).padStart(2, '0');
+---
+
+<BaseLayout
+  title={`door ${number} · ${page.title}`}
+  description={doorDescription(page.story)}
+  pola={{ mood: 'annoyed', message: `Door ${number} is open. Please do not break anything else.` }}
+>
+  <TextPage command={`$ aocn open ${page.door}`} title={`door ${number} · ${page.title}`}>
+    <div class="doorStory">
+      {paragraphs(page.story).map((p) => (
+        <p>{p}</p>
+      ))}
+    </div>
+    {
+      page.log && (
+        <blockquote class="doorLog">
+          {paragraphs(page.log).map((p) => (
+            <p>{p}</p>
+          ))}
+          <footer class="doorLogSignature">— POLARIS-7</footer>
+        </blockquote>
+      )
+    }
+    {
+      page.videoId && (
+        <p>
+          <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(page.videoId)}`} target="_blank" rel="noopener">
+            watch the interview
+          </a>
+        </p>
+      )
+    }
+  </TextPage>
+</BaseLayout>
+
+<style>
+  /* Brighter than other text pages: a story is long enough to reach the aurora at tablet
+     widths, where the body color falls below AA contrast. */
+  .doorStory {
+    display: grid;
+    gap: var(--space-4);
+    color: var(--color-text);
+  }
+
+  .doorLog {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding-left: var(--space-4);
+    border-left: 1px solid var(--color-aurora);
+    color: var(--color-text-soft);
+  }
+
+  .doorLogSignature {
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+</style>
