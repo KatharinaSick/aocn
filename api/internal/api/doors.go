@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -17,6 +18,18 @@ import (
 // Everything was uploaded weeks before. These handlers decide on each request whether a
 // door is open, so at 06:00 nothing runs: requests just get a different answer. The website
 // and the CLI both ask here, and nowhere else decides.
+
+const (
+	// Generous, for a workshop behind one address where everyone runs aocn open at once.
+	// It stops a script that downloads in a loop, not a determined caller: the address
+	// comes from X-Forwarded-For (see clientIP).
+	bundleLimit  = 120
+	bundleWindow = time.Hour
+)
+
+// doorNumber is how a door is named in a path: 1, 2, … 24, never 01 or +1. One spelling per
+// door, so there's one URL to cache, log and link to.
+var doorNumber = regexp.MustCompile(`^[1-9][0-9]*$`)
 
 // Doors is what the door endpoints need.
 type Doors struct {
@@ -54,7 +67,12 @@ func (d Doors) gate(w http.ResponseWriter, r *http.Request) (door int, opensAt t
 	// nothing between here and the caller may keep a copy. The website caches what it renders.
 	w.Header().Set("Cache-Control", "no-store")
 
-	door, err := strconv.Atoi(r.PathValue("door"))
+	text := r.PathValue("door")
+	if !doorNumber.MatchString(text) {
+		writeJSONError(w, http.StatusNotFound, "no such door")
+		return 0, time.Time{}, false
+	}
+	door, err := strconv.Atoi(text)
 	if err != nil {
 		writeJSONError(w, http.StatusNotFound, "no such door")
 		return 0, time.Time{}, false
@@ -105,10 +123,23 @@ func handleDoorBundle(log app.Logger, d Doors) http.Handler {
 
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="door-%02d.tar.gz"`, door))
+		// With the length known, a download that's cut off is an error for the CLI, even
+		// through a proxy that would otherwise end the response cleanly.
+		if bundle.Size >= 0 {
+			w.Header().Set("Content-Length", strconv.FormatInt(bundle.Size, 10))
+		}
 		if _, err := io.Copy(w, bundle); err != nil {
 			log.Error("Streaming a bundle failed", "door", door, "error", err)
+			// Returning normally would end the response as if it were complete. Aborting
+			// drops the connection, so the CLI sees a broken download, not a broken bundle.
+			panic(http.ErrAbortHandler)
 		}
 	})
+}
+
+func tooManyBundles(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSONError(w, http.StatusTooManyRequests, "too many downloads from here, try again in an hour")
 }
 
 // writeMissingDoor answers for an open door whose files can't be read. That's our mistake,

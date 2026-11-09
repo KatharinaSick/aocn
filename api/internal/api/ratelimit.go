@@ -13,13 +13,17 @@ import (
 // a sliding window. Every Cloud Run instance counts on its own and a restart forgets,
 // which is fine for what this is for: slowing down careless scripts. The limit that
 // protects inboxes is the per-address one, which is kept in the database.
-func limitByIP(limit int, window time.Duration) func(http.Handler) http.Handler {
+//
+// tooMany answers a request over the limit, in whatever form its caller reads.
+func limitByIP(limit int, window time.Duration, tooMany http.HandlerFunc) func(http.Handler) http.Handler {
 	return httprate.LimitBy(limit, window,
 		func(r *http.Request) (string, error) { return clientIP(r), nil },
-		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "too many signups from here, try again later", http.StatusTooManyRequests)
-		}),
+		httprate.WithLimitHandler(tooMany),
 	)
+}
+
+func tooManySignups(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "too many signups from here, try again later", http.StatusTooManyRequests)
 }
 
 // clientIP is the address the request came from, as the proxies in front report it:

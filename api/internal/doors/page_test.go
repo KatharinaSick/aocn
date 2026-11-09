@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -46,13 +48,13 @@ type fakeStorage struct {
 	reads int
 }
 
-func (s *fakeStorage) Open(_ context.Context, name string) (io.ReadCloser, error) {
+func (s *fakeStorage) Open(_ context.Context, name string) (File, error) {
 	s.reads++
 	data, ok := s.files[name]
 	if !ok {
-		return nil, ErrNotFound
+		return File{}, ErrNotFound
 	}
-	return io.NopCloser(strings.NewReader(data)), nil
+	return File{ReadCloser: io.NopCloser(strings.NewReader(data)), Size: int64(len(data))}, nil
 }
 
 func TestPagesKeepsAPageForAMinute(t *testing.T) {
@@ -91,6 +93,24 @@ func TestPagesDoesNotKeepErrors(t *testing.T) {
 
 	if _, err := pages.Get(context.Background(), 2, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing page: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestDirTellsTheSize(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "doors", "01"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "doors", "01", "bundle.tar.gz"), []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Dir(dir).Open(context.Background(), BundleName(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if f.Size != 5 {
+		t.Errorf("size %d, want 5", f.Size)
 	}
 }
 
