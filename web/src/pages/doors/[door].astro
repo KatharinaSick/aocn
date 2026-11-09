@@ -10,14 +10,16 @@
 //
 // When the API can't answer (down, or an open door's files unreadable), the page says to
 // come back in a few minutes, with a 503 and no caching. That tells nobody more than the 404
-// would: the API only fails this way for a door that's open, or for every door at once.
+// would: the API only fails this way for a door that's open, or for every door at once. Only
+// doors in the schedule get there; any other number is a 404 without asking the API.
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
+import { DOOR_COUNT } from '../../lib/doors';
 
 export const prerender = false;
 
-const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '');
+const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '', DOOR_COUNT);
 const cacheHeaders = doorCacheHeaders(answer, new Date());
 if (answer.state === 'closed' || answer.state === 'missing') {
   // An empty 404 makes Astro answer with the prerendered 404 page.
@@ -33,7 +35,7 @@ for (const [name, value] of Object.entries(cacheHeaders)) {
 }
 
 const page = answer.state === 'open' ? answer.page : undefined;
-// fetchDoor only answers for a plain door number, so the parameter is one here.
+// fetchDoor only answers for a door in the schedule, so the parameter is one here.
 const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 ---
 

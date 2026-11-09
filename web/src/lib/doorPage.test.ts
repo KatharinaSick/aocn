@@ -54,7 +54,7 @@ describe('fetchDoor', () => {
 
   it('asks the API for the door', async () => {
     const fetchFn = answering(200, openBody);
-    expect((await fetchDoor('http://api', '1', fetchFn)).state).toBe('open');
+    expect((await fetchDoor('http://api', '1', 12, fetchFn)).state).toBe('open');
     expect(fetchFn).toHaveBeenCalledWith('http://api/doors/1', expect.anything());
   });
 
@@ -62,12 +62,12 @@ describe('fetchDoor', () => {
     const fetchFn = vi.fn(async () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
-    expect(await fetchDoor('http://api', '1', fetchFn)).toEqual({ state: 'unavailable' });
+    expect(await fetchDoor('http://api', '1', 12, fetchFn)).toEqual({ state: 'unavailable' });
   });
 
-  it.each(['0', '01', '+1', '1x', '../health', '-1', '100', ''])('never asks the API about %j', async (door) => {
+  it.each(['0', '01', '+1', '1x', '../health', '-1', '100', '', '13', '50'])('never asks the API about %j', async (door) => {
     const fetchFn = answering(200, openBody);
-    expect(await fetchDoor('http://api', door, fetchFn)).toEqual({ state: 'missing' });
+    expect(await fetchDoor('http://api', door, 12, fetchFn)).toEqual({ state: 'missing' });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
