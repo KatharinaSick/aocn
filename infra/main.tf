@@ -62,6 +62,52 @@ resource "google_storage_bucket" "state" {
 }
 
 # ---------------------------------------------------------------------------
+# Doors
+# ---------------------------------------------------------------------------
+
+# Every door's bundle and page, uploaded weeks before it opens by the doors workflow in the
+# private challenges repository. Nothing here is public: the API decides on each request
+# whether a door is open and only then hands its files out.
+resource "google_storage_bucket" "doors" {
+  name     = "${var.project_id}-doors"
+  location = var.region
+
+  public_access_prevention    = "enforced"
+  uniform_bucket_level_access = true
+
+  # A broken upload is rolled back to the version before it.
+  versioning {
+    enabled = true
+  }
+
+  lifecycle_rule {
+    condition {
+      num_newer_versions = 10
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  depends_on = [google_project_service.enabled]
+}
+
+# The API only reads. Doors are written by the challenges repository's upload workflow.
+resource "google_storage_bucket_iam_member" "api_runtime_reads_doors" {
+  bucket = google_storage_bucket.doors.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.api_runtime.email}"
+}
+
+# objectUser rather than objectCreator: an upload replaces the door's files, and replacing
+# an object needs delete. The old version stays as a noncurrent version either way.
+resource "google_storage_bucket_iam_member" "door_uploader_writes_doors" {
+  bucket = google_storage_bucket.doors.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${google_service_account.door_uploader.email}"
+}
+
+# ---------------------------------------------------------------------------
 # Container images
 # ---------------------------------------------------------------------------
 
@@ -122,6 +168,15 @@ resource "google_service_account" "infra_plan" {
 resource "google_service_account" "infra_apply" {
   account_id   = "aocn-infra-apply"
   display_name = "Advent of Cloud Native infra apply (GitHub Actions)"
+
+  depends_on = [google_project_service.enabled]
+}
+
+# Uploads doors to the doors bucket, from main in the challenges repository. Can do
+# nothing else.
+resource "google_service_account" "door_uploader" {
+  account_id   = "aocn-door-uploader"
+  display_name = "Advent of Cloud Native door uploads (GitHub Actions, aocn-challenges)"
 
   depends_on = [google_project_service.enabled]
 }
@@ -268,6 +323,44 @@ resource "google_service_account_iam_member" "github_main_deploys" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.ref/refs/heads/main"
 }
 
+# --- Workload Identity Federation for the challenges repository -------------
+
+# A pool of its own rather than a second repository in the one above. The bindings there
+# trust refs/heads/main on its own, because that pool only admits this repository; admitting
+# a second one would let its main branch deploy the API too.
+resource "google_iam_workload_identity_pool" "github_challenges" {
+  workload_identity_pool_id = "github-challenges"
+  display_name              = "GitHub Actions (aocn-challenges)"
+
+  depends_on = [google_project_service.enabled]
+}
+
+resource "google_iam_workload_identity_pool_provider" "github_challenges" {
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github_challenges.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github"
+  display_name                       = "GitHub Actions OIDC"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject"          = "assertion.sub"
+    "attribute.repository_id" = "assertion.repository_id"
+    "attribute.ref"           = "assertion.ref"
+  }
+
+  attribute_condition = "assertion.repository_id == \"${var.challenges_repository_id}\""
+}
+
+# Only main uploads: merging is the decision to publish a door. Pull requests get
+# refs/pull/N/merge and can't reach it, whatever their workflow file says.
+resource "google_service_account_iam_member" "github_challenges_main_uploads" {
+  service_account_id = google_service_account.door_uploader.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_challenges.name}/attribute.ref/refs/heads/main"
+}
+
 # ---------------------------------------------------------------------------
 # Secrets
 # ---------------------------------------------------------------------------
@@ -330,6 +423,11 @@ resource "google_cloud_run_v2_service" "api" {
       # Replaced by the first deploy. ignore_changes below is what stops every later
       # apply from putting it back.
       image = "us-docker.pkg.dev/cloudrun/container/hello"
+
+      env {
+        name  = "DOORS_BUCKET"
+        value = google_storage_bucket.doors.name
+      }
 
       # Secrets reach the API as environment variables, which config.yaml expands.
       # "latest" is resolved when a revision starts, so a new secret version takes

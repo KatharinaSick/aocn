@@ -14,9 +14,9 @@ import (
 // There is no CORS layer: the website reaches the API through Netlify's /api/*
 // rewrite and Astro's dev-server proxy, so the browser only ever talks to its own
 // origin. Adding a direct cross-origin caller would mean revisiting that.
-func NewHandler(log app.Logger, subscriptions Subscriptions) http.Handler {
+func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors) http.Handler {
 	mux := http.NewServeMux()
-	addRoutes(mux, log, subscriptions)
+	addRoutes(mux, log, subscriptions, doors)
 
 	// otelhttp names the span after the matched route and continues an incoming
 	// traceparent, so requests arriving from the website or the CLI stay on one trace.
@@ -30,12 +30,14 @@ func NewHandler(log app.Logger, subscriptions Subscriptions) http.Handler {
 	return requestLogger(log, handler)
 }
 
-func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions) {
+func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, doors Doors) {
 	mux.Handle("GET /health", handleHealth())
 	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow)(handleSubscribe(log, subscriptions)))
 	// Confirming is limited too: a valid token can be replayed until it expires, and
 	// every replay costs a database row and two Resend calls.
 	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow)(handleConfirmSubscription(log, subscriptions)))
+	mux.Handle("GET /doors/{door}", handleDoorPage(log, doors))
+	mux.Handle("GET /doors/{door}/bundle", handleDoorBundle(log, doors))
 }
 
 // spanName labels spans by the matched route pattern (e.g. "GET /health"). When no

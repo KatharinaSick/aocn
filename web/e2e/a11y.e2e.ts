@@ -18,7 +18,11 @@ function findPages(dir: string): string[] {
   });
 }
 
-const pages = findPages(distDir);
+// On-demand pages aren't in dist/: they're rendered by `astro dev` from a fake API with a
+// made-up door (playwright.config.ts). List each kind of on-demand page here.
+const onDemandPages = ['http://localhost:4800/doors/1'];
+
+const pages = [...findPages(distDir), ...onDemandPages];
 
 test('dist/ contains the pages to test', () => {
   expect(pages, 'run `npm run build` first').toContain('/');

@@ -16,6 +16,10 @@
   # Astro 7 requires Node >= 22.12. Pinned to the same major as devbox's nodejs@24
   # so a build that passes locally is not built against a different Node here.
   NODE_VERSION = "24"
+  # Where the door page asks the API, from the server. The same Cloud Run URL as the
+  # /api/* proxy below (`tofu output -raw api_url`); built into the function by
+  # astro.config.mjs, because functions don't see these variables at runtime.
+  API_URL = "https://aocn-api-zczz3wlwwa-ew.a.run.app"
 
 # Some crawlers and feed readers ask for /favicon.ico without reading the page's <link>
 # tags. Serve them the PNG favicon (a rewrite, so the URL stays the same).

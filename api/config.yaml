@@ -13,6 +13,14 @@ server:
 schedule:
   path: ../schedule.yaml
 
+# Where the challenges repository uploaded each door's bundle and page. Set one of the two.
+doors:
+  # The bucket on Cloud Run, set by infra/.
+  bucket: ${DOORS_BUCKET}
+  # A folder laid out like the bucket, locally. `devbox run api` points it at build/ in a
+  # checkout of the challenges repository next to this one, which `make bundle` fills.
+  dir: ${DOORS_DIR}
+
 site:
   # Where links in emails point. Empty falls back to https://aocn.dev; set
   # SITE_URL=http://localhost:4321 to click a confirmation link through locally.
