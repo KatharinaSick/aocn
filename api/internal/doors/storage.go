@@ -1,4 +1,5 @@
-// Package doors reads what the challenges repository uploaded to the bucket: each door's bundle and page.
+// Package doors reads what the challenges repository uploaded to the bucket: each door's bundle,
+// page and checks.
 // It knows nothing about opening times; whether a door may be served is decided by the
 // caller, on every request, with the schedule.
 package doors

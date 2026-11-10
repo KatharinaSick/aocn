@@ -41,6 +41,11 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	// Codespaces), all opening the door at 06:00; a limit by IP would turn them away first.
 	mux.Handle("GET /doors/{door}", handleDoorPage(log, doors))
 	mux.Handle("GET /doors/{door}/bundle", handleDoorBundle(log, doors))
+	mux.Handle("GET /doors/{door}/checks", handleDoorChecks(log, doors))
+	// Not limited either, for the same reason. Each run is one row; a door has no reason to
+	// be verified more than a few times a minute, so a limit per user is the first thing to
+	// add if anyone floods it.
+	mux.Handle("POST /doors/{door}/verify", handleVerify(log, doors))
 }
 
 // spanName labels spans by the matched route pattern (e.g. "GET /health"). When no

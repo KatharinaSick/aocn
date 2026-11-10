@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -54,61 +53,24 @@ func ParsePage(data []byte) (Page, error) {
 	return p, nil
 }
 
-// pageTTL is how long a page is kept before it's read from storage again, so a new upload
-// shows up within about a minute without every request reading the bucket.
-const pageTTL = time.Minute
-
 // Pages reads pages from storage and keeps each one for a minute. It never decides whether a
 // page may be shown.
 type Pages struct {
 	Storage Storage
-
-	mu    sync.Mutex
-	cache map[int]cachedPage
+	cache   cache[Page]
 }
 
-type cachedPage struct {
-	page     Page
-	loadedAt time.Time
-}
-
-// Get returns the door's page. Errors are not kept, so a fixed upload shows up on the next
-// request. ErrNotFound means the door's page was never uploaded.
+// Get returns the door's page. ErrNotFound means the door's page was never uploaded.
 func (p *Pages) Get(ctx context.Context, door int, now time.Time) (Page, error) {
-	p.mu.Lock()
-	cached, ok := p.cache[door]
-	p.mu.Unlock()
-	if ok && now.Sub(cached.loadedAt) < pageTTL && !now.Before(cached.loadedAt) {
-		return cached.page, nil
-	}
-
-	page, err := p.load(ctx, door)
-	if err != nil {
-		return Page{}, err
-	}
-
-	p.mu.Lock()
-	if p.cache == nil {
-		p.cache = map[int]cachedPage{}
-	}
-	p.cache[door] = cachedPage{page: page, loadedAt: now}
-	p.mu.Unlock()
-	return page, nil
-}
-
-func (p *Pages) load(ctx context.Context, door int) (Page, error) {
-	r, err := p.Storage.Open(ctx, PageName(door))
-	if err != nil {
-		return Page{}, err
-	}
-	defer r.Close()
-	data, err := io.ReadAll(io.LimitReader(r, 1<<20))
-	if err != nil {
-		return Page{}, err
-	}
-	page, err := ParsePage(data)
-	if err != nil {
-		return Page{}, fmt.Errorf("door %d: %w", door, err)
-	}
-	return page, nil
+	return p.cache.get(door, now, func() (Page, error) {
+		data, err := readAll(ctx, p.Storage, PageName(door))
+		if err != nil {
+			return Page{}, err
+		}
+		page, err := ParsePage(data)
+		if err != nil {
+			return Page{}, fmt.Errorf("door %d: %w", door, err)
+		}
+		return page, nil
+	})
 }
