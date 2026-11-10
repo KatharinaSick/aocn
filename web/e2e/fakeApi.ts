@@ -2,7 +2,7 @@
 // made-up open door: the real ones live in the private challenges repository, never here.
 // The text is long enough to wrap, and has every part a door page can show. Door 3 is open
 // but can't be served, for the page that says to come back later. One made-up player has
-// fixed door 1, for the profile card.
+// fixed door 1, for the profile card. Door 5 isn't open yet.
 import { createServer } from 'node:http';
 
 const port = Number(process.argv[2] ?? 4801);
@@ -31,6 +31,9 @@ createServer((req, res) => {
   } else if (req.url === '/doors/3') {
     res.statusCode = 503;
     res.end('{"error":"this door can\'t be served right now, try again in a few minutes"}');
+  } else if (req.url === '/doors/5') {
+    res.statusCode = 404;
+    res.end('{"door":5,"opensAt":"2026-12-05T06:00:00+01:00"}');
   } else if (req.url === '/users/example') {
     res.end(JSON.stringify(profile));
   } else if (req.url === '/health') {

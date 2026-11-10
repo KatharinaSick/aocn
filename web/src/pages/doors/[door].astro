@@ -6,24 +6,32 @@
 // open; this page only shows what it gets. A door that isn't open answers with exactly the
 // 404 page, like a door that doesn't exist.
 //
-// No countdown yet: a closed door is the 404 page for now.
+// A closed door shows when it opens, and how previewers log in: before Dec 1 that's the only
+// place the site offers logging in. It says nothing about the door but its number and its
+// opening time, which the schedule already makes public. A door that isn't in the schedule
+// is the 404 page.
 //
 // When the API can't answer (down, or an open door's files unreadable), the page says to
 // come back in a few minutes, with a 503 and no caching. That tells nobody more than the 404
 // would: the API only fails this way for a door that's open, or for every door at once. Only
 // doors in the schedule get there; any other number is a 404 without asking the API.
+import Countdown from '../../components/Countdown.astro';
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { loginHref } from '../../lib/account';
 import { doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
-import { isDoor } from '../../lib/doors';
+import { formatStationTime, isDoor } from '../../lib/doors';
 
 export const prerender = false;
 
 const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '', isDoor);
 const cacheHeaders = doorCacheHeaders(answer, new Date());
-if (answer.state === 'closed' || answer.state === 'missing') {
+if (answer.state === 'missing') {
   // An empty 404 makes Astro answer with the prerendered 404 page.
   return new Response(null, { status: 404, headers: cacheHeaders });
+}
+if (answer.state === 'closed') {
+  Astro.response.status = 404;
 }
 if (answer.state === 'unavailable') {
   Astro.response.status = 503;
@@ -35,6 +43,7 @@ for (const [name, value] of Object.entries(cacheHeaders)) {
 }
 
 const page = answer.state === 'open' ? answer.page : undefined;
+const closed = answer.state === 'closed' ? answer : undefined;
 // fetchDoor only answers for a door in the schedule, so the parameter is one here.
 const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 ---
@@ -69,6 +78,25 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
         )}
       </TextPage>
     </BaseLayout>
+  ) : closed ? (
+    <BaseLayout
+      title={`door ${number}`}
+      description={`Door ${number} opens ${formatStationTime(closed.opensAt)}.`}
+      noindex
+      pola={{ mood: 'neutral', message: 'This door opens when it opens. Not a minute earlier.' }}
+    >
+      <TextPage command={`$ aocn open ${closed.door}`} title={`door ${number}`}>
+        <div class="doorClosed">
+          <Countdown door={closed.door} />
+          <p class="doorPreview" data-door={closed.door}>
+            <span class="doorPreviewLogIn">
+              previewing this door? <a href={loginHref(`/doors/${closed.door}`)}>log in</a>
+            </span>
+            <span class="doorPreviewLoggedIn" hidden></span>
+          </p>
+        </div>
+      </TextPage>
+    </BaseLayout>
   ) : (
     <BaseLayout
       title={`door ${number}`}
@@ -86,7 +114,50 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
   )
 }
 
+<script>
+  import { fetchMe } from '../../lib/account';
+
+  // Logged in already, but still here: not a previewer of this door, and logging in again
+  // wouldn't change that.
+  const preview = document.querySelector<HTMLElement>('.doorPreview');
+  if (preview) {
+    fetchMe().then((me) => {
+      if (!me) return;
+      const loggedIn = preview.querySelector<HTMLElement>('.doorPreviewLoggedIn')!;
+      loggedIn.textContent = `logged in as @${me.login} · not a previewer of this door`;
+      loggedIn.hidden = false;
+      preview.querySelector<HTMLElement>('.doorPreviewLogIn')!.hidden = true;
+    });
+  }
+</script>
+
 <style>
+  /* A feature panel, so the countdown's small labels stay readable over the aurora. */
+  .doorClosed {
+    display: grid;
+    gap: var(--space-6);
+    padding: var(--space-8);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-screen);
+    background: var(--color-panel-glass);
+  }
+
+  @media (max-width: 599px) {
+    .doorClosed {
+      padding: var(--space-6);
+    }
+  }
+
+  .doorPreview {
+    color: var(--color-text-soft);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .doorPreview a {
+    color: var(--color-text);
+  }
+
   /* Brighter than other text pages: a story is long enough to reach the aurora at tablet
      widths, where the body color falls below AA contrast. */
   .doorStory {
