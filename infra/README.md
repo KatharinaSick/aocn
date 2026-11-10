@@ -36,6 +36,12 @@ Authentication is Application Default Credentials: `gcloud auth application-defa
   # Any random value works; rotating it invalidates confirmation links not yet clicked.
   openssl rand -base64 32 | tr -d '\n' \
     | gcloud secrets versions add subscribe-signing-key --data-file=-
+
+  # Who gets which doors early: GitHub user IDs (gh api users/<login> --jq .id) with all
+  # their doors or some, separated by spaces. A change takes effect with the next revision:
+  # re-run the deploy, or deploy anything.
+  printf '%s' '1234567:all 7654321:1 1111111:3,5' \
+    | gcloud secrets versions add previewers --data-file=-
   ```
 
 ## Bootstrapping
