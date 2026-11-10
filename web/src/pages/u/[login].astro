@@ -45,81 +45,83 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
       pola={profileLine(cells)}
     >
       <TextPage command="$ whoami" title={`@${profile.login}`}>
-        <p class="profileMeta">
-          winter-over engineer · joined{' '}
-          <time datetime={profile.since.toISOString()} aria-label={formatStationDayLong(profile.since)}>
-            {formatStationDay(profile.since)}
-          </time>{' '}
-          ·{' '}
-          <a href={`https://github.com/${profile.login}`} target="_blank" rel="noopener">
-            github.com/{profile.login}
-          </a>
-        </p>
+        <div class="profile">
+          <p class="profileMeta">
+            winter-over engineer · joined{' '}
+            <time datetime={profile.since.toISOString()} aria-label={formatStationDayLong(profile.since)}>
+              {formatStationDay(profile.since)}
+            </time>{' '}
+            ·{' '}
+            <a href={`https://github.com/${profile.login}`} target="_blank" rel="noopener">
+              github.com/{profile.login}
+            </a>
+          </p>
 
-        <section class="profileAssessment" aria-labelledby="profileAssessmentTitle">
-          <PolaFace mood={assessment.mood} size="large" label={null} />
-          <div class="profileAssessmentText">
-            <p class="profileAssessmentLead">POLARIS-7 has assessed {profile.login} as</p>
-            <h2 class="profileAssessmentTitle" id="profileAssessmentTitle">
-              {assessment.title}
+          <section class="profileAssessment" aria-labelledby="profileAssessmentTitle">
+            <PolaFace mood={assessment.mood} size="large" label={null} />
+            <div class="profileAssessmentText">
+              <p class="profileAssessmentLead">POLARIS-7 has assessed {profile.login} as</p>
+              <h2 class="profileAssessmentTitle" id="profileAssessmentTitle">
+                {assessment.title}
+              </h2>
+              <p>{assessment.line}</p>
+              <p class="profileAssessmentNext">
+                {assessment.next
+                  ? `next: ${assessment.next.title} · ${assessment.next.more} more ${assessment.next.more === 1 ? 'door' : 'doors'}`
+                  : 'nothing left to fix'}
+              </p>
+            </div>
+          </section>
+
+          <section class="profileDoorsSection" aria-labelledby="profileDoorsTitle">
+            <h2 class="profileDoorsTitle" id="profileDoorsTitle">
+              <span aria-hidden="true">$ ls doors/</span>
+              <span class="srOnly">doors</span>
+              <span class="profileDoorsCount">
+                {fixed} / {DOOR_COUNT} fixed
+              </span>
             </h2>
-            <p>{assessment.line}</p>
-            <p class="profileAssessmentNext">
-              {assessment.next
-                ? `next: ${assessment.next.title} · ${assessment.next.more} more ${assessment.next.more === 1 ? 'door' : 'doors'}`
-                : 'nothing left to fix'}
-            </p>
-          </div>
-        </section>
-
-        <section class="profileDoorsSection" aria-labelledby="profileDoorsTitle">
-          <h2 class="profileDoorsTitle" id="profileDoorsTitle">
-            <span aria-hidden="true">$ ls doors/</span>
-            <span class="srOnly">doors</span>
-            <span class="profileDoorsCount">
-              {fixed} / {DOOR_COUNT} fixed
-            </span>
-          </h2>
-          <ol class="profileDoors">
-            {cells.map((cell) => {
-              const inner = (
-                <>
-                  <span class="profileDoorNumber" aria-hidden="true">
-                    {doorNumber(cell.door)}
-                  </span>
-                  <span class="profileDoorIcon" aria-hidden="true">
-                    {cell.state === 'fixed' && '✓'}
-                    {cell.state === 'open' && '○'}
-                    {cell.state === 'closed' && (
-                      <svg width="10" height="12" viewBox="0 0 10 12" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <rect x="1" y="5" width="8" height="6" rx="1" />
-                        <path d="M3 5V3.5a2 2 0 0 1 4 0V5" />
-                      </svg>
+            <ol class="profileDoors">
+              {cells.map((cell) => {
+                const inner = (
+                  <>
+                    <span class="profileDoorNumber" aria-hidden="true">
+                      {doorNumber(cell.door)}
+                    </span>
+                    <span class="profileDoorIcon" aria-hidden="true">
+                      {cell.state === 'fixed' && '✓'}
+                      {cell.state === 'open' && '○'}
+                      {cell.state === 'closed' && (
+                        <svg width="10" height="12" viewBox="0 0 10 12" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <rect x="1" y="5" width="8" height="6" rx="1" />
+                          <path d="M3 5V3.5a2 2 0 0 1 4 0V5" />
+                        </svg>
+                      )}
+                    </span>
+                    <span class="srOnly">
+                      door {cell.door}: {cellLabel[cell.state]}
+                    </span>
+                  </>
+                );
+                return (
+                  <li>
+                    {cell.state === 'closed' ? (
+                      <span class={`profileDoor profileDoor-${cell.state}`}>{inner}</span>
+                    ) : (
+                      <a class={`profileDoor profileDoor-${cell.state}`} href={`/doors/${cell.door}`}>
+                        {inner}
+                      </a>
                     )}
-                  </span>
-                  <span class="srOnly">
-                    door {cell.door}: {cellLabel[cell.state]}
-                  </span>
-                </>
-              );
-              return (
-                <li>
-                  {cell.state === 'closed' ? (
-                    <span class={`profileDoor profileDoor-${cell.state}`}>{inner}</span>
-                  ) : (
-                    <a class={`profileDoor profileDoor-${cell.state}`} href={`/doors/${cell.door}`}>
-                      {inner}
-                    </a>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </section>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
 
-        <p class="profileLogOutRow" data-login={profile.login} hidden>
-          <button class="profileLogOut" type="button">log out</button>
-        </p>
+          <p class="profileLogOutRow" data-login={profile.login} hidden>
+            <button class="profileLogOut" type="button">log out</button>
+          </p>
+        </div>
       </TextPage>
     </BaseLayout>
   ) : (
@@ -158,9 +160,14 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
 </script>
 
 <style>
+  /* The blocks of the card are sections: who, her verdict, the doors. */
+  .profile {
+    display: grid;
+    gap: var(--space-12);
+  }
+
   /* Brighter than muted: at tablet widths this line sits on the aurora. */
   .profileMeta {
-    margin-top: calc(-1 * var(--space-4));
     color: var(--color-text-soft);
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
@@ -171,12 +178,11 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     color: var(--color-text);
   }
 
-  /* Room around her verdict and the doors: this page is looked at, not read. */
+  /* A feature panel: more padding than a card, since the page is looked at, not read. */
   .profileAssessment {
     display: flex;
     align-items: center;
-    gap: var(--space-8);
-    margin-top: var(--space-8);
+    gap: var(--space-6);
     padding: var(--space-8);
     border: 1px solid var(--color-line-strong);
     border-radius: var(--radius-screen);
@@ -210,8 +216,7 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
 
   .profileDoorsSection {
     display: grid;
-    gap: var(--space-4);
-    margin-top: var(--space-8);
+    gap: var(--space-6);
   }
 
   .profileDoorsSection .profileDoorsTitle {
@@ -248,7 +253,7 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     }
   }
 
-  @media (max-width: 599px) {
+  @media (max-width: 799px) {
     .profileDoors {
       gap: var(--space-2);
     }
@@ -257,7 +262,7 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
   .profileDoor {
     display: grid;
     justify-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1);
     padding: var(--space-4) 0;
     border: 1px solid var(--color-line-strong);
     border-radius: var(--radius-screen);
@@ -276,7 +281,8 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
   .profileDoorIcon {
     display: flex;
     align-items: center;
-    height: var(--space-3);
+    /* One line of text tall, whether it holds a character or the lock. */
+    height: 1lh;
     font-weight: var(--font-weight-regular);
   }
 
@@ -292,10 +298,6 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     border-style: dashed;
     color: var(--color-muted);
     font-weight: var(--font-weight-regular);
-  }
-
-  .profileLogOutRow {
-    margin-top: var(--space-8);
   }
 
   .profileLogOut {
@@ -319,7 +321,6 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
       flex-direction: column;
       align-items: flex-start;
       gap: var(--space-6);
-      margin-top: var(--space-6);
       padding: var(--space-6);
     }
   }
