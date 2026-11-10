@@ -34,14 +34,15 @@ repository next to this one, after `make bundle` there. To see a door before Dec
 date in `schedule.yaml` (and don't commit that). `aocn open` asks the API at
 `$AOCN_API_URL`, `https://aocn.dev/api` when unset: `AOCN_API_URL=http://localhost:8080 aocn open 1`.
 
-Logging in on the website locally needs a GitHub OAuth app of your own, since the real one
-sends people back to aocn.dev only. Create one under GitHub → Settings → Developer settings →
-OAuth Apps, with `http://localhost:4321` as homepage and
-`http://localhost:4321/api/auth/github/callback` as callback URL, and put its ID and a client
-secret in `api/.env.local` (ignored by git), which `devbox run api` reads:
+Logging in on the website locally uses the same GitHub OAuth app as production, "Advent of
+Cloud Native", which lists `http://localhost:4321/api/auth/github/callback` as a second callback
+URL. GitHub only redirects the browser there, so nothing has to reach your machine. Generate a
+client secret of its own for local use on the app's page (GitHub → Settings → Developer
+settings → OAuth Apps), so it can be revoked without touching production's, and put it in
+`api/.env.local` (ignored by git), which `devbox run api` reads:
 
 ```sh
-GITHUB_CLIENT_ID=Ov23...
+GITHUB_CLIENT_ID=Ov23lim4gHxoibK0E5Tv
 GITHUB_CLIENT_SECRET=...
 ```
 

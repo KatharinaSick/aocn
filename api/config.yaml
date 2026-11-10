@@ -45,9 +45,8 @@ subscribe:
 
 # The GitHub OAuth app people log in to the website with. The CLI uses the same app, with the
 # device flow. The client ID is public; Cloud Run gets it from infra/, the secret from Secret
-# Manager. Its one callback URL is https://aocn.dev/api/auth/github/callback, so logging in
-# locally needs a second OAuth app with http://localhost:4321/api/auth/github/callback; set
-# both variables for `devbox run api` (see README.md). Without them, dev mode has no login.
+# Manager. Locally, the same app, which also lists localhost as a callback URL, with a client
+# secret of its own in api/.env.local (see README.md). Without them, dev mode has no login.
 github:
   clientId: ${GITHUB_CLIENT_ID}
   clientSecret: ${GITHUB_CLIENT_SECRET}
