@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { doorCells, fetchProfile, profileCacheHeaders, profileLine, readProfileAnswer, type DoorCell } from './profile';
+import {
+  assess,
+  doorCells,
+  fetchProfile,
+  profileCacheHeaders,
+  profileLine,
+  readProfileAnswer,
+  type DoorCell,
+} from './profile';
 
 const body = {
   login: 'Octo',
@@ -88,5 +96,32 @@ describe('profileCacheHeaders', () => {
   it('caches cards and misses on Netlify, never a failure', () => {
     expect(profileCacheHeaders({ state: 'missing' })['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=60');
     expect(profileCacheHeaders({ state: 'unavailable' })).toEqual({ 'Cache-Control': 'no-store' });
+  });
+});
+
+describe('assess', () => {
+  it('climbs the titles with the doors fixed', () => {
+    const titles = Array.from({ length: 13 }, (_, fixed) => assess(fixed, 12).title);
+    expect(titles).toEqual([
+      'Unverified human',
+      'Occasionally useful',
+      'Occasionally useful',
+      'Adequate',
+      'Adequate',
+      'Adequate',
+      'Reliable',
+      'Reliable',
+      'Reliable',
+      'Trusted',
+      'Trusted',
+      'Trusted',
+      'Part of the crew',
+    ]);
+  });
+
+  it('says how far the next title is', () => {
+    expect(assess(4, 12).next).toEqual({ title: 'Reliable', more: 2 });
+    expect(assess(11, 12).next).toEqual({ title: 'Part of the crew', more: 1 });
+    expect(assess(12, 12).next).toBeUndefined();
   });
 });

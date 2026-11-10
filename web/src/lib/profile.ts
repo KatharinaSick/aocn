@@ -122,3 +122,31 @@ export function profileCacheHeaders(answer: ProfileAnswer): Record<string, strin
     'Netlify-CDN-Cache-Control': `public, s-maxage=${PROFILE_CDN_SECONDS}`,
   };
 }
+
+/** What POLARIS-7 makes of someone, by how many doors they fixed. */
+export interface Assessment {
+  title: string;
+  mood: PolaMood;
+  line: string;
+  /** The next title and how many more doors it takes; none once every door is fixed. */
+  next?: { title: string; more: number };
+}
+
+/** Her titles, from the fewest doors fixed. The last one takes every door. */
+const TITLES: { from: number | 'all'; title: string; mood: PolaMood; line: string }[] = [
+  { from: 0, title: 'Unverified human', mood: 'neutral', line: 'Has not fixed anything yet. Has not broken anything either.' },
+  { from: 1, title: 'Occasionally useful', mood: 'neutral', line: 'Fixed something once. I made a note.' },
+  { from: 3, title: 'Adequate', mood: 'neutral', line: 'You fix more than the crew breaks. That is rarer than it sounds.' },
+  { from: 6, title: 'Reliable', mood: 'fond', line: 'I have stopped double-checking your work. Mostly.' },
+  { from: 9, title: 'Trusted', mood: 'fond', line: 'I would let you near production. Unsupervised, even.' },
+  { from: 'all', title: 'Part of the crew', mood: 'fond', line: 'You are one of them now. Please do not start breaking things.' },
+];
+
+/** Her assessment of someone who fixed `fixed` of `doorCount` doors. */
+export function assess(fixed: number, doorCount: number): Assessment {
+  const from = (t: (typeof TITLES)[number]) => (t.from === 'all' ? doorCount : t.from);
+  const index = TITLES.findLastIndex((t) => fixed >= from(t));
+  const { title, mood, line } = TITLES[index];
+  const next = TITLES[index + 1];
+  return next ? { title, mood, line, next: { title: next.title, more: from(next) - fixed } } : { title, mood, line };
+}

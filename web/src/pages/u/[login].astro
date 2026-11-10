@@ -7,10 +7,11 @@
 //
 // The card is the same for everyone, so Netlify caches it. "log out" is only on your own
 // card, and that's decided in the browser after the page is shown.
+import PolaFace from '../../components/PolaFace.astro';
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { DOOR_COUNT, formatStationDay, formatStationDayLong, isDoorOpen } from '../../lib/doors';
-import { doorCells, fetchProfile, profileCacheHeaders, profileLine } from '../../lib/profile';
+import { assess, doorCells, fetchProfile, profileCacheHeaders, profileLine } from '../../lib/profile';
 
 export const prerender = false;
 
@@ -31,48 +32,90 @@ for (const [name, value] of Object.entries(cacheHeaders)) {
 const profile = answer.state === 'found' ? answer.profile : undefined;
 const cells = profile ? doorCells(profile.solved, DOOR_COUNT, isDoorOpen, new Date()) : [];
 const fixed = cells.filter((c) => c.state === 'fixed').length;
+const assessment = assess(fixed, DOOR_COUNT);
 const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not open yet' };
+const doorNumber = (door: number) => String(door).padStart(2, '0');
 ---
 
 {
   profile ? (
     <BaseLayout
       title={`@${profile.login}`}
-      description={`@${profile.login} fixed ${fixed} of ${DOOR_COUNT} doors on Advent of Cloud Native.`}
+      description={`POLARIS-7 has assessed @${profile.login} as ${assessment.title}: ${fixed} of ${DOOR_COUNT} doors fixed on Advent of Cloud Native.`}
       pola={profileLine(cells)}
     >
-      <TextPage command="$ whoami" title={profile.login}>
-        <div class="profileWho">
-          {profile.avatarUrl && (
-            <img class="profileAvatar" src={profile.avatarUrl} width="64" height="64" alt="" />
-          )}
-          <p>
-            <a href={`https://github.com/${profile.login}`} target="_blank" rel="noopener">
-              @{profile.login}
-            </a>
-            <br />
-            <span class="profileSince">
-              station engineer since <time datetime={profile.since.toISOString()} aria-label={formatStationDayLong(profile.since)}>{formatStationDay(profile.since)}</time>
-            </span>
-          </p>
-        </div>
+      <TextPage command="$ whoami" title={`@${profile.login}`}>
+        <p class="profileMeta">
+          winter-over engineer · joined{' '}
+          <time datetime={profile.since.toISOString()} aria-label={formatStationDayLong(profile.since)}>
+            {formatStationDay(profile.since)}
+          </time>{' '}
+          ·{' '}
+          <a href={`https://github.com/${profile.login}`} target="_blank" rel="noopener">
+            github.com/{profile.login}
+          </a>
+        </p>
 
-        <h2 class="profileCount">
-          doors fixed <span class="profileCountNumber">{fixed} / {DOOR_COUNT}</span>
-        </h2>
-        <ol class="profileDoors">
-          {cells.map((cell) => (
-            <li class={`profileDoor profileDoor-${cell.state}`}>
-              <span aria-hidden="true">
-                {String(cell.door).padStart(2, '0')}
-                {cell.state === 'fixed' ? '✓' : cell.state === 'closed' ? '·' : ''}
-              </span>
-              <span class="srOnly">
-                door {cell.door}: {cellLabel[cell.state]}
-              </span>
-            </li>
-          ))}
-        </ol>
+        <section class="profileAssessment" aria-labelledby="profileAssessmentTitle">
+          <PolaFace mood={assessment.mood} size="large" label={null} />
+          <div class="profileAssessmentText">
+            <p class="profileAssessmentLead">POLARIS-7 has assessed {profile.login} as</p>
+            <h2 class="profileAssessmentTitle" id="profileAssessmentTitle">
+              {assessment.title}
+            </h2>
+            <p>{assessment.line}</p>
+            <p class="profileAssessmentNext">
+              {assessment.next
+                ? `next: ${assessment.next.title} · ${assessment.next.more} more ${assessment.next.more === 1 ? 'door' : 'doors'}`
+                : 'nothing left to fix'}
+            </p>
+          </div>
+        </section>
+
+        <section class="profileDoorsSection" aria-labelledby="profileDoorsTitle">
+          <h2 class="profileDoorsTitle" id="profileDoorsTitle">
+            <span aria-hidden="true">$ ls doors/</span>
+            <span class="srOnly">doors</span>
+            <span class="profileDoorsCount">
+              {fixed} / {DOOR_COUNT} fixed
+            </span>
+          </h2>
+          <ol class="profileDoors">
+            {cells.map((cell) => {
+              const inner = (
+                <>
+                  <span class="profileDoorNumber" aria-hidden="true">
+                    {doorNumber(cell.door)}
+                  </span>
+                  <span class="profileDoorIcon" aria-hidden="true">
+                    {cell.state === 'fixed' && '✓'}
+                    {cell.state === 'open' && '○'}
+                    {cell.state === 'closed' && (
+                      <svg width="10" height="12" viewBox="0 0 10 12" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <rect x="1" y="5" width="8" height="6" rx="1" />
+                        <path d="M3 5V3.5a2 2 0 0 1 4 0V5" />
+                      </svg>
+                    )}
+                  </span>
+                  <span class="srOnly">
+                    door {cell.door}: {cellLabel[cell.state]}
+                  </span>
+                </>
+              );
+              return (
+                <li>
+                  {cell.state === 'closed' ? (
+                    <span class={`profileDoor profileDoor-${cell.state}`}>{inner}</span>
+                  ) : (
+                    <a class={`profileDoor profileDoor-${cell.state}`} href={`/doors/${cell.door}`}>
+                      {inner}
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
 
         <p class="profileLogOutRow" data-login={profile.login} hidden>
           <button class="profileLogOut" type="button">log out</button>
@@ -115,36 +158,75 @@ const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not op
 </script>
 
 <style>
-  .profileWho {
+  /* Brighter than muted: at tablet widths this line sits on the aurora. */
+  .profileMeta {
+    margin-top: calc(-1 * var(--space-4));
+    color: var(--color-text-soft);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  /* The link sits on the brightest part of the aurora at 1024px. */
+  .profileMeta a {
+    color: var(--color-text);
+  }
+
+  .profileAssessment {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-  }
-
-  .profileAvatar {
-    border-radius: var(--radius-dot);
+    gap: var(--space-6);
+    padding: var(--space-6);
     border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-screen);
+    background: var(--color-panel-glass);
   }
 
-  .profileSince {
+  .profileAssessmentText {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .profileAssessmentLead,
+  .profileAssessmentNext {
     color: var(--color-muted);
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
   }
 
-  .profileCount {
-    margin-top: var(--space-6);
-    font-size: var(--font-size-caps);
-    line-height: var(--line-height-caps);
-    letter-spacing: var(--letter-spacing-caps);
-    font-weight: var(--font-weight-regular);
-    text-transform: uppercase;
-    color: var(--color-muted);
+  /* Two classes, so these win over TextPage's section headings. */
+  .profileAssessment .profileAssessmentTitle {
+    margin: 0;
+    padding: 0;
+    border: none;
+    text-transform: none;
+    color: var(--color-aurora);
+    font-size: var(--font-size-title);
+    line-height: var(--line-height-title);
+    letter-spacing: var(--letter-spacing-title);
+    font-weight: var(--font-weight-bold);
   }
 
-  .profileCountNumber {
+  .profileDoorsSection {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .profileDoorsSection .profileDoorsTitle {
+    margin: 0;
+    padding: 0;
+    border: none;
+    letter-spacing: normal;
+    text-transform: none;
+    display: flex;
+    justify-content: space-between;
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+    font-weight: var(--font-weight-regular);
+  }
+
+  .profileDoorsCount {
     color: var(--color-text);
-    font-weight: var(--font-weight-bold);
   }
 
   .profileDoors {
@@ -164,16 +246,29 @@ const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not op
   }
 
   .profileDoor {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: var(--size-touch);
+    display: grid;
+    justify-items: center;
+    gap: var(--space-1);
+    padding: var(--space-3) 0;
     border: 1px solid var(--color-line-strong);
     border-radius: var(--radius-screen);
     background: var(--color-panel);
-    color: var(--color-text-soft);
+    color: var(--color-text);
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
+    font-weight: var(--font-weight-bold);
+    text-decoration: none;
+  }
+
+  a.profileDoor:hover {
+    border-color: var(--color-aurora);
+  }
+
+  .profileDoorIcon {
+    display: flex;
+    align-items: center;
+    height: var(--space-3);
+    font-weight: var(--font-weight-regular);
   }
 
   .profileDoor-fixed {
@@ -181,19 +276,15 @@ const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not op
     background: var(--color-panel-new);
     box-shadow: var(--glow-new);
     color: var(--color-aurora);
-    font-weight: var(--font-weight-bold);
   }
 
   .profileDoor-closed {
     border-color: var(--color-line);
+    border-style: dashed;
     color: var(--color-muted);
+    font-weight: var(--font-weight-regular);
   }
 
-  .profileLogOutRow {
-    margin-top: var(--space-6);
-  }
-
-  /* Looks like a link: it logs out, it doesn't take you anywhere. */
   .profileLogOut {
     padding: 0;
     border: none;
@@ -207,5 +298,15 @@ const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not op
 
   .profileLogOut:hover {
     color: var(--color-aurora);
+  }
+
+  /* Her face above the words, where they'd be squeezed next to it. */
+  @media (max-width: 599px) {
+    .profileAssessment {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-4);
+      padding: var(--space-4);
+    }
   }
 </style>
