@@ -12,12 +12,13 @@ import (
 	"github.com/katharinasick/aocn/cli/internal/kubectl"
 )
 
-// HTTP sends a request from source to target and passes if the answer matches expect.
+// HTTP sends a request from source to target and passes if the answer matches expect. The
+// error is only for Ctrl+C: everything else is a failed check.
 //
 // Requests are sent with the station binary's probe role: inside the Deployment's pod (same
 // identity as the workload), or from a short-lived test pod. Test pods, the test server and
 // their fixtures are created here and deleted before HTTP returns, also when ctx is cancelled.
-func HTTP(ctx context.Context, out io.Writer, args []string, method string, source Source, target Target, data string, expect Expect) error {
+func HTTP(ctx context.Context, out io.Writer, method string, source Source, target Target, data string, expect Expect) (Result, error) {
 	to := target.Service
 	if target.TestServer {
 		to = "a test server"
@@ -42,15 +43,15 @@ func HTTP(ctx context.Context, out io.Writer, args []string, method string, sour
 	}()
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return Result{}, ctx.Err()
 		}
 		answer = err.Error()
 	}
-	r := Result{Check: "http", Args: args, Passed: err == nil && expect.Matches(answer), Got: answer}
+	r := Result{Passed: err == nil && expect.Matches(answer), Got: answer}
 	if r.Passed {
-		return report(out, r, pass)
+		return report(out, r, pass), nil
 	}
-	return report(out, r, fmt.Sprintf("%s, but got: %s", fail, answer))
+	return report(out, r, fmt.Sprintf("%s, but got: %s", fail, answer)), nil
 }
 
 // probe returns the probe's answer: the status ("200 OK"), or "error: ..." if the request

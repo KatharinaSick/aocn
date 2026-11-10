@@ -11,12 +11,15 @@ import (
 )
 
 // Job starts a run of the CronJob and passes if it completes. On failure it doesn't name the
-// CronJob, so finding it stays part of the challenge.
-func Job(ctx context.Context, out io.Writer, args []string, cronJob Source) error {
+// CronJob, so finding it stays part of the challenge. The error is only for Ctrl+C.
+func Job(ctx context.Context, out io.Writer, cronJob Source) (Result, error) {
 	job := fmt.Sprintf("verify-%s-%d", cronJob.Name, time.Now().Unix())
 	if _, err := kubectl.Run(ctx, "create", "job", "-n", cronJob.Namespace, "--from=cronjob/"+cronJob.Name, job); err != nil {
-		return report(out, Result{Check: "job", Args: args, Got: err.Error()},
-			fmt.Sprintf("a scheduled job in %s couldn't start: %s", cronJob.Namespace, err))
+		if ctx.Err() != nil {
+			return Result{}, ctx.Err()
+		}
+		return report(out, Result{Got: err.Error()},
+			fmt.Sprintf("a scheduled job in %s couldn't start: %s", cronJob.Namespace, err)), nil
 	}
 	defer cleanup(func(ctx context.Context) {
 		kubectl.Run(ctx, "delete", "job", "-n", cronJob.Namespace, job, "--wait=false")
@@ -24,16 +27,19 @@ func Job(ctx context.Context, out io.Writer, args []string, cronJob Source) erro
 
 	succeeded, err := waitForJob(ctx, cronJob.Namespace, job, 60*time.Second)
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return Result{}, ctx.Err()
 	}
-	r := Result{Check: "job", Args: args, Passed: succeeded}
+	r := Result{Passed: succeeded, Got: "completed"}
+	if !succeeded {
+		r.Got = "failed"
+	}
 	if err != nil {
 		r.Got = err.Error()
 	}
 	if succeeded {
-		return report(out, r, fmt.Sprintf("a fresh %s run completes", cronJob.Name))
+		return report(out, r, fmt.Sprintf("a fresh %s run completes", cronJob.Name)), nil
 	}
-	return report(out, r, fmt.Sprintf("a scheduled job in %s doesn't complete", cronJob.Namespace))
+	return report(out, r, fmt.Sprintf("a scheduled job in %s doesn't complete", cronJob.Namespace)), nil
 }
 
 // waitForJob returns whether the job succeeded, once it succeeded or failed or timeout passed.

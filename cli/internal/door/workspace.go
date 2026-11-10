@@ -11,8 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"github.com/katharinasick/aocn/cli/internal/check"
 )
 
 // Dir is the folder in the workspace that holds one folder per door. Doors stay after the
@@ -89,18 +87,4 @@ func Init(ctx context.Context, out io.Writer, folder string) error {
 		return fmt.Errorf("the door's %s/init.sh failed: %w", ToolDir, err)
 	}
 	return nil
-}
-
-// Verify runs the door's .aocn/verify.sh. Every check in it appends its result to results.
-func Verify(ctx context.Context, out io.Writer, folder, results string) error {
-	cmd := exec.CommandContext(ctx, "bash", filepath.Join(ToolDir, "verify.sh"))
-	cmd.Dir = folder
-	cmd.Env = append(os.Environ(), check.ResultsEnv+"="+results)
-	cmd.Stdout = out
-	cmd.Stderr = out
-	// On Ctrl+C, the running check gets the signal from the terminal too and cleans up. Give
-	// it time instead of killing the script right away.
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-	cmd.WaitDelay = 30 * time.Second
-	return cmd.Run()
 }

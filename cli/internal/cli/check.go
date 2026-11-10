@@ -8,15 +8,16 @@ import (
 	"github.com/katharinasick/aocn/cli/internal/check"
 )
 
-// newCheckCmd is the check engine that doors' verify.sh scripts call, one check per line:
+// newCheckCmd runs one check by hand, the same way aocn verify runs a door's checks. It's
+// for building doors: it saves nothing.
 //
 //	aocn check http GET apps/api/items --from apps/deploy/frontend --expect 2xx
 func newCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check",
-		Short: "Run one check (used by a door's verify.sh)",
+		Short: "Run one check, for building doors",
 		Long: `check runs one check against the cluster, prints one line and exits with 1 if it
-failed. Doors call it from their verify.sh.
+failed. It's how a door's checks behave in aocn verify, one at a time, and saves nothing.
 
 Workloads are named NAMESPACE/KIND/NAME, like kubectl does:
   apps/deploy/frontend   inside the Deployment's pod
@@ -60,8 +61,7 @@ it doesn't need. A new pod sends to it without the open egress it gets elsewhere
 			if err != nil {
 				return err
 			}
-			all := append(append([]string{}, args...), "--from", from, "--expect", expect, "--data", data)
-			return check.HTTP(cmd.Context(), cmd.OutOrStdout(), all, args[0], source, target, data, exp)
+			return failedIfNot(check.HTTP(cmd.Context(), cmd.OutOrStdout(), args[0], source, target, data, exp))
 		},
 	}
 	cmd.Flags().StringVar(&from, "from", "", "the workload that sends the request")
@@ -85,7 +85,7 @@ name the CronJob, so finding it stays part of the challenge.`,
 			if err != nil || source.Kind != check.KindCronJob {
 				return fmt.Errorf("job must be NAMESPACE/cronjob/NAME, got %q", args[0])
 			}
-			return check.Job(cmd.Context(), cmd.OutOrStdout(), args, source)
+			return failedIfNot(check.Job(cmd.Context(), cmd.OutOrStdout(), source))
 		},
 	}
 }
@@ -94,12 +94,24 @@ func newCheckReadyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ready NAMESPACE...",
 		Short: "Passes once every Deployment in the namespaces is ready",
-		Long: `ready waits up to a minute for every Deployment in the namespaces. Run it first, so
-the other checks don't fail because the workloads are still starting.`,
-		Example: `  aocn check ready apps db || exit 1`,
+		Long: `ready waits up to a minute for every Deployment in the namespaces. In a door's checks
+it comes first: if it fails, aocn verify stops, so the other checks don't fail because the
+workloads are still starting.`,
+		Example: `  aocn check ready apps db`,
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return check.Ready(cmd.Context(), cmd.OutOrStdout(), args)
+			return failedIfNot(check.Ready(cmd.Context(), cmd.OutOrStdout(), args))
 		},
 	}
+}
+
+// failedIfNot turns a check's result into the command's exit: 1 if it didn't pass.
+func failedIfNot(r check.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	if !r.Passed {
+		return check.ErrFailed
+	}
+	return nil
 }
