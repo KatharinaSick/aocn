@@ -85,8 +85,18 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
       noindex
       pola={{ mood: 'neutral', message: 'This door opens when it opens. Not a minute earlier.' }}
     >
-      <TextPage command={`$ aocn open ${closed.door}`} title={`door ${number}`}>
-        <div class="doorClosed">
+      <!-- Laid out like the landing page: the same fade, title and countdown. -->
+      <div class="doorFade" aria-hidden="true"></div>
+      <section class="doorHero">
+        <div class="doorIntro">
+          <p class="doorCommand">$ aocn open {closed.door}</p>
+          <h1 class="doorTitle">
+            door {number}<span class="doorUnderscore" aria-hidden="true">_</span>
+          </h1>
+          <p class="doorLead">Not open yet. The crew is still breaking it.</p>
+        </div>
+
+        <div>
           <Countdown door={closed.door} />
           <p class="doorPreview" data-door={closed.door}>
             <span class="doorPreviewLogIn">
@@ -95,7 +105,7 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
             <span class="doorPreviewLoggedIn" hidden></span>
           </p>
         </div>
-      </TextPage>
+      </section>
     </BaseLayout>
   ) : (
     <BaseLayout
@@ -132,24 +142,59 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 </script>
 
 <style>
-  /* A feature panel, so the countdown's small labels stay readable over the aurora. */
-  .doorClosed {
-    display: grid;
-    gap: var(--space-6);
-    padding: var(--space-8);
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-screen);
-    background: var(--color-panel-glass);
+  /* The closed door follows the landing page (pages/index.astro): keep the two in step. */
+  .doorFade {
+    position: absolute;
+    z-index: -1;
+    top: 380px;
+    left: 0;
+    right: 0;
+    height: 280px;
+    background: linear-gradient(180deg, transparent 0%, var(--color-bg) 85%);
+    pointer-events: none;
   }
 
-  @media (max-width: 599px) {
-    .doorClosed {
-      padding: var(--space-6);
-    }
+  .doorHero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    gap: var(--space-12);
+    padding: var(--space-12) var(--page-gutter);
+  }
+
+  .doorIntro {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .doorCommand {
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .doorTitle {
+    font-size: var(--font-size-display);
+    line-height: var(--line-height-display);
+    letter-spacing: var(--letter-spacing-display);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .doorUnderscore {
+    color: var(--color-aurora);
+  }
+
+  .doorLead {
+    max-width: 50ch;
+    color: var(--color-text-soft);
+    font-size: var(--font-size-lead);
+    line-height: var(--line-height-lead);
   }
 
   .doorPreview {
-    color: var(--color-text-soft);
+    margin-top: var(--space-4);
+    color: var(--color-muted);
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
   }
