@@ -44,3 +44,11 @@ func TestNextStep(t *testing.T) {
 		t.Errorf("expired: got %v", err)
 	}
 }
+
+func TestPollInterval(t *testing.T) {
+	for given, want := range map[int]time.Duration{0: 5 * time.Second, 1: 5 * time.Second, 5: 5 * time.Second, 8: 8 * time.Second} {
+		if got := pollInterval(DeviceCode{Interval: given}); got != want {
+			t.Errorf("interval %d: got %v, want %v", given, got, want)
+		}
+	}
+}

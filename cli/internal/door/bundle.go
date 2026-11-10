@@ -44,7 +44,8 @@ func BundleFolder(bundle string, number int) (string, error) {
 }
 
 // ToolDir is the folder in every door that belongs to aocn: the door's init.sh, hints and
-// workloads. The checks aren't in it: aocn verify gets them from the API. Everything else in a door's folder is the player's.
+// workloads. The checks aren't in it: aocn verify gets them from the API. Everything else in
+// a door's folder is the player's.
 const ToolDir = ".aocn"
 
 // Extract unpacks the bundle into dir. The bundle's folder ends up as dir/<folder>, which

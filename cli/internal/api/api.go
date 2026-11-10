@@ -69,11 +69,9 @@ func do(ctx context.Context, method, path string, body io.Reader) (*http.Respons
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	token, err := auth.Token()
-	if err != nil {
-		return nil, err
-	}
-	if token != "" {
+	// A token that can't be read is sent as no token: an open door doesn't need one, and
+	// aocn verify reports the problem itself before it saves a result.
+	if token, err := auth.Token(); err == nil && token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := client.Do(req)

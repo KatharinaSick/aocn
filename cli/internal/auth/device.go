@@ -59,9 +59,19 @@ type tokenResponse struct {
 	Interval    int    `json:"interval"`
 }
 
+// minInterval is the shortest wait between two polls: the device flow's default. It keeps aocn
+// from asking GitHub in a tight loop if an answer ever comes without an interval.
+const minInterval = 5 * time.Second
+
+// pollInterval is how long to wait before the first poll: what GitHub said, never less than
+// minInterval.
+func pollInterval(code DeviceCode) time.Duration {
+	return max(time.Duration(code.Interval)*time.Second, minInterval)
+}
+
 // WaitForToken polls GitHub until the player confirmed the code, and returns the token.
 func WaitForToken(ctx context.Context, code DeviceCode) (string, error) {
-	interval := time.Duration(code.Interval) * time.Second
+	interval := pollInterval(code)
 	deadline := time.Now().Add(time.Duration(code.ExpiresIn) * time.Second)
 	for {
 		select {
