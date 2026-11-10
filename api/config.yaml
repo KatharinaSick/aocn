@@ -42,3 +42,10 @@ resend:
 subscribe:
   # Signs the link in the confirmation email.
   signingKey: ${SUBSCRIBE_SIGNING_KEY}
+
+# Who gets which doors early, to test and review them: GitHub user IDs with all their doors or
+# some, separated by spaces, like "9420018:all 7654321:1 1111111:3,5". From Secret Manager on
+# Cloud Run (filled in by hand, see infra/README.md), so who playtests isn't in this
+# repository. Look an ID up with: gh api users/<login> --jq .id
+# Quoted, so a value over several lines reads as one.
+previewers: "${PREVIEWERS}"

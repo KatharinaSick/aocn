@@ -81,3 +81,47 @@ func TestValidateDoors(t *testing.T) {
 		t.Error("dir accepted on Cloud Run")
 	}
 }
+
+func TestParsePreviewers(t *testing.T) {
+	p, err := ParsePreviewers(" 9420018:all\n7654321:1  1111111:3,5 ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	may := map[struct {
+		id   int64
+		door int
+	}]bool{
+		{9420018, 1}: true, {9420018, 24}: true,
+		{7654321, 1}: true, {7654321, 2}: false, {7654321, 3}: false,
+		{1111111, 3}: true, {1111111, 5}: true, {1111111, 1}: false, {1111111, 4}: false,
+		{2222222, 1}: false,
+	}
+	for c, want := range may {
+		if got := p.May(c.id, c.door); got != want {
+			t.Errorf("May(%d, %d) = %v, want %v", c.id, c.door, got, want)
+		}
+	}
+
+	if empty, err := ParsePreviewers(""); err != nil || empty.May(9420018, 1) {
+		t.Errorf("empty: %v, %v", empty, err)
+	}
+}
+
+// Anything unclear stops the API instead of quietly giving someone the wrong doors.
+func TestParsePreviewersRefuses(t *testing.T) {
+	for _, s := range []string{
+		"9420018",           // no doors
+		"9420018:",          // no doors
+		"katharinasick:all", // a login
+		"9420018:one",       // not a door
+		"9420018:0",         // no door 0
+		"9420018:1,,2",      // empty door
+		"-5:all", "0:all",   // not an ID
+		"9420018:1 9420018:3", // twice
+		"9420018:1,7654321:2", // entries are separated by spaces
+	} {
+		if got, err := ParsePreviewers(s); err == nil {
+			t.Errorf("%q: got %v, want an error", s, got)
+		}
+	}
+}

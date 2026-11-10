@@ -13,6 +13,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/katharinasick/aocn/cli/internal/api"
+	"github.com/katharinasick/aocn/cli/internal/auth"
 	"github.com/katharinasick/aocn/cli/internal/check"
 	"github.com/katharinasick/aocn/cli/internal/cluster"
 	"github.com/katharinasick/aocn/cli/internal/door"
@@ -22,9 +23,31 @@ func newLoginCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "login",
 		Short: "Sign in with GitHub",
-		Args:  cobra.NoArgs,
+		Long: `login signs you in with your GitHub account, so aocn verify can save your progress under
+it. You confirm a code on github.com; aocn gets no access to your repositories or anything
+private, only your public profile.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("login: not implemented yet")
+			out := cmd.OutOrStdout()
+			code, err := auth.StartDeviceFlow(cmd.Context())
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Open %s and enter this code: %s\n\nWaiting for GitHub…\n", code.VerificationURI, code.UserCode)
+			token, err := auth.WaitForToken(cmd.Context(), code)
+			if err != nil {
+				return err
+			}
+			if err := auth.SaveToken(token); err != nil {
+				return fmt.Errorf("saving your sign-in: %w", err)
+			}
+			login, err := auth.Login(cmd.Context(), token)
+			if err != nil {
+				// Signed in all the same; only the name is missing.
+				fmt.Fprintln(out, "Signed in.")
+				return nil
+			}
+			fmt.Fprintf(out, "Signed in as %s.\n", login)
 			return nil
 		},
 	}
@@ -117,7 +140,7 @@ func download(cmd *cobra.Command, number int) (string, error) {
 		return "", err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Downloading door %d…\n", number)
-	err = api.DownloadBundle(cmd.Context(), number, f)
+	preview, err := api.DownloadBundle(cmd.Context(), number, f)
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
@@ -131,6 +154,10 @@ func download(cmd *cobra.Command, number int) (string, error) {
 			return "", fmt.Errorf("there is no door %d", number)
 		}
 		return "", err
+	}
+	if !preview.OpensAt.IsZero() {
+		fmt.Fprintf(cmd.OutOrStdout(), "Preview: %s. You get it early because you're a previewer.\n",
+			&api.ClosedError{Door: number, OpensAt: preview.OpensAt})
 	}
 	return f.Name(), nil
 }
@@ -180,8 +207,9 @@ func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
 		Short: "Check the open door",
-		Long: `verify runs the open door's checks against the cluster and shows which pass. If you're
-stuck, aocn hint gives you a hint. It works from any folder.`,
+		Long: `verify runs the open door's checks against the cluster and shows which pass. Once you're
+signed in (aocn login), it saves the result under your GitHub account. If you're stuck, aocn
+hint gives you a hint. It works from any folder.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := door.Dir()
@@ -196,47 +224,67 @@ stuck, aocn hint gives you a hint. It works from any folder.`,
 				return fmt.Errorf("no door is open yet. Start one with: aocn open 1")
 			}
 
-			results, err := os.CreateTemp("", "aocn-results-*.jsonl")
+			// Always from the API, also for a door opened from a local bundle: nothing in the
+			// player's folder decides whether a door passes.
+			checks, err := api.Checks(cmd.Context(), open.Number)
 			if err != nil {
+				var closed *api.ClosedError
+				if errors.As(err, &closed) {
+					return fmt.Errorf("not yet: %w", closed)
+				}
 				return err
 			}
-			results.Close()
-			defer os.Remove(results.Name())
+			if len(checks) == 0 {
+				return fmt.Errorf("door %d has no checks", open.Number)
+			}
 
 			out := cmd.OutOrStdout()
-			runErr := door.Verify(cmd.Context(), out, filepath.Join(dir, open.Folder), results.Name())
-			if cmd.Context().Err() != nil {
-				return cmd.Context().Err()
-			}
-			all, err := check.ReadResults(results.Name())
+			fmt.Fprintf(out, "Checking door %d. This takes about a minute.\n", open.Number)
+			outcomes, err := check.Run(cmd.Context(), out, checks)
 			if err != nil {
 				return err
 			}
 
-			failed := 0
-			for _, r := range all {
-				if !r.Passed {
-					failed++
-				}
-			}
+			failed := check.Failed(outcomes)
 			fmt.Fprintln(out)
-			switch {
-			case failed == 1:
-				fmt.Fprintln(out, "Not there yet: 1 check failed. Stuck? Try aocn hint.")
-			case failed > 1:
-				fmt.Fprintf(out, "Not there yet: %d checks failed. Stuck? Try aocn hint.\n", failed)
-			case runErr != nil:
-				// The script stopped without a failed check, so it's broken, not the door.
-				return fmt.Errorf("the door's checks stopped early: %w", runErr)
-			case len(all) == 0:
-				return fmt.Errorf("the door has no checks")
-			default:
+			switch failed {
+			case 0:
 				fmt.Fprintln(out, "All checks passed.")
-				return nil
+			case 1:
+				fmt.Fprintln(out, "Not there yet: 1 check failed. Stuck? Try aocn hint.")
+			default:
+				fmt.Fprintf(out, "Not there yet: %d checks failed. Stuck? Try aocn hint.\n", failed)
 			}
-			return check.ErrFailed
+
+			save(cmd, open.Number, outcomes)
+			if failed > 0 {
+				return check.ErrFailed
+			}
+			return nil
 		},
 	}
+}
+
+// save sends a run to the API, so it counts for the player's GitHub account. Whether it
+// worked never changes what verify found, so a problem here is a note, not an error.
+func save(cmd *cobra.Command, number int, outcomes []check.Outcome) {
+	out := cmd.OutOrStdout()
+	token, err := auth.Token()
+	if err == nil && token == "" {
+		fmt.Fprintln(out, "Not saved: sign in with aocn login to keep your progress.")
+		return
+	}
+	if err == nil {
+		var saved api.Saved
+		if saved, err = api.SendResults(cmd.Context(), number, outcomes); err == nil {
+			fmt.Fprintf(out, "Saved for %s.\n", saved.Login)
+			return
+		}
+	}
+	if cmd.Context().Err() != nil {
+		return
+	}
+	fmt.Fprintf(out, "Not saved: %v\n", err)
 }
 
 func newHintCmd() *cobra.Command {

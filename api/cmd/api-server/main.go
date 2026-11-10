@@ -16,6 +16,8 @@ import (
 	"github.com/katharinasick/aocn/api/internal/db"
 	"github.com/katharinasick/aocn/api/internal/doors"
 	"github.com/katharinasick/aocn/api/internal/email"
+	"github.com/katharinasick/aocn/api/internal/github"
+	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
 	"github.com/katharinasick/aocn/api/internal/subscribe"
 )
@@ -46,6 +48,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// A previewer for a door that isn't in the schedule is a typo; it stops the API like one.
+	for _, door := range cfg.PreviewerAccess.Doors() {
+		if _, err := sched.OpensAt(door); err != nil {
+			log.Error("A previewer gets a door that isn't in the schedule. Terminating.", "door", door)
+			os.Exit(1)
+		}
+	}
+
 	shutdownOTel, err := app.SetupOTel(ctx, log)
 	if err != nil {
 		log.Error("Failed to set up OpenTelemetry. Terminating.", "error", err)
@@ -66,7 +76,16 @@ func main() {
 		flush(log, shutdownOTel)
 		os.Exit(1)
 	}
-	doorsAPI := api.Doors{Schedule: sched, Storage: doorStorage, Pages: &doors.Pages{Storage: doorStorage}}
+	doorsAPI := api.Doors{
+		Schedule:   sched,
+		Storage:    doorStorage,
+		Pages:      &doors.Pages{Storage: doorStorage},
+		Checks:     &doors.Checks{Storage: doorStorage},
+		Users:      github.NewUsers(),
+		Previewers: cfg.PreviewerAccess,
+		Results:    results.NewStore(pool),
+	}
+	log.Info("Previewers loaded", "count", len(cfg.PreviewerAccess))
 
 	// WriteTimeout is also the longest a bundle download may take: past it the connection
 	// drops and aocn open reports a broken download. Fine while bundles are small; bigger

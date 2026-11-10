@@ -18,6 +18,9 @@ locals {
     # Signs the link in the subscribe confirmation email, so an address is only added
     # by someone who can read its inbox.
     "subscribe-signing-key",
+    # Who gets which doors early, by GitHub user ID. Not a credential, but kept out of the
+    # public repository so it doesn't say who playtests.
+    "previewers",
   ]
 }
 
@@ -446,6 +449,7 @@ resource "google_cloud_run_v2_service" "api" {
           DATABASE_URL          = "database-url"
           RESEND_API_KEY        = "resend-api-key"
           SUBSCRIBE_SIGNING_KEY = "subscribe-signing-key"
+          PREVIEWERS            = "previewers"
         }
 
         content {

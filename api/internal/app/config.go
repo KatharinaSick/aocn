@@ -2,7 +2,9 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -53,6 +55,13 @@ type Config struct {
 	Subscribe struct {
 		SigningKey string `yaml:"signingKey"`
 	} `yaml:"subscribe"`
+
+	// Previewers get doors early, to test and review them: see ParsePreviewers. GitHub user
+	// IDs, never logins, which can be renamed and then taken by someone else.
+	Previewers string `yaml:"previewers"`
+
+	// PreviewerAccess is Previewers, read by ParseConfig.
+	PreviewerAccess Previewers `yaml:"-"`
 }
 
 // ParseConfig reads ./config.yaml relative to the working directory, so the API must
@@ -78,6 +87,9 @@ func ParseConfig() (*Config, error) {
 	cfg.Site.URL = strings.TrimSuffix(cfg.Site.URL, "/")
 
 	if err := cfg.validate(OnCloudRun()); err != nil {
+		return nil, err
+	}
+	if cfg.PreviewerAccess, err = ParsePreviewers(cfg.Previewers); err != nil {
 		return nil, err
 	}
 
@@ -114,6 +126,68 @@ func (c *Config) validate(onCloudRun bool) error {
 		return errors.New("resend.apiKey, resend.segmentId and subscribe.signingKey are required; set AOCN_DEV=true for local stand-ins")
 	}
 	return nil
+}
+
+// Previewers says who may get which doors early, by GitHub user ID.
+type Previewers map[int64]PreviewDoors
+
+// PreviewDoors are the doors one previewer gets early: all of them, or some.
+type PreviewDoors struct {
+	All   bool
+	Doors map[int]bool
+}
+
+// May reports whether the user may get the door before it opens.
+func (p Previewers) May(userID int64, door int) bool {
+	d, ok := p[userID]
+	return ok && (d.All || d.Doors[door])
+}
+
+// ParsePreviewers reads previewers separated by spaces, each a GitHub user ID with the doors
+// they get early: all of them, or a list.
+//
+//	9420018:all 7654321:1 1111111:3,5
+//
+// Anything else stops the API at startup, so a login put in by mistake, or a typo, can't
+// quietly lock a previewer out.
+func ParsePreviewers(s string) (Previewers, error) {
+	p := Previewers{}
+	for _, entry := range strings.Fields(s) {
+		idText, doorsText, ok := strings.Cut(entry, ":")
+		id, err := strconv.ParseInt(idText, 10, 64)
+		if !ok || err != nil || id <= 0 || doorsText == "" {
+			return nil, fmt.Errorf("previewers: %q must be a GitHub user ID with its doors, like 1234567:all or 1234567:1,3 (gh api users/<login> --jq .id)", entry)
+		}
+		if _, dup := p[id]; dup {
+			return nil, fmt.Errorf("previewers: %d is listed twice; list all of their doors once, like %d:1,3", id, id)
+		}
+		if doorsText == "all" {
+			p[id] = PreviewDoors{All: true}
+			continue
+		}
+		doors := map[int]bool{}
+		for _, d := range strings.Split(doorsText, ",") {
+			door, err := strconv.Atoi(d)
+			if err != nil || door < 1 {
+				return nil, fmt.Errorf("previewers: %q: %q is not a door number", entry, d)
+			}
+			doors[door] = true
+		}
+		p[id] = PreviewDoors{Doors: doors}
+	}
+	return p, nil
+}
+
+// Doors lists every door named for a previewer, so the API can refuse doors that aren't in
+// the schedule.
+func (p Previewers) Doors() []int {
+	var doors []int
+	for _, d := range p {
+		for door := range d.Doors {
+			doors = append(doors, door)
+		}
+	}
+	return doors
 }
 
 // OnCloudRun reports whether the process runs as a Cloud Run service, which always

@@ -113,7 +113,7 @@ func TestRefresh(t *testing.T) {
 	dir := t.TempDir()
 	if err := Extract(writeBundle(t,
 		entry{name: "01-example/manifests/policy.yaml", mode: 0o644},
-		entry{name: "01-example/.aocn/verify.sh", mode: 0o755},
+		entry{name: "01-example/.aocn/init.sh", mode: 0o755},
 		entry{name: "01-example/.aocn/old.sh", mode: 0o755},
 	), dir); err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestRefresh(t *testing.T) {
 
 	newer := writeBundle(t,
 		entry{name: "01-example/manifests/policy.yaml", mode: 0o644},
-		entry{name: "01-example/.aocn/verify.sh", mode: 0o755},
+		entry{name: "01-example/.aocn/init.sh", mode: 0o755},
 		entry{name: "01-example/.aocn/workloads/app.yaml", mode: 0o644},
 	)
 	if err := Refresh(newer, dir, "01-example"); err != nil {
