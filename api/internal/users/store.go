@@ -64,3 +64,21 @@ func (s *Store) Get(ctx context.Context, githubUserID int64) (User, error) {
 	}
 	return u, err
 }
+
+// ByLogin returns the user with this login, ignoring case, and when they first showed up. A
+// login can be renamed and then taken by someone else, so more than one row can have it; the
+// one refreshed last is the one who has it now.
+func (s *Store) ByLogin(ctx context.Context, login string) (User, time.Time, error) {
+	var u User
+	var since time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT github_user_id, login, avatar_url, created_at FROM users
+		WHERE lower(login) = lower($1)
+		ORDER BY updated_at DESC
+		LIMIT 1`, login,
+	).Scan(&u.GitHubID, &u.Login, &u.AvatarURL, &since)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, time.Time{}, ErrNotFound
+	}
+	return u, since, err
+}

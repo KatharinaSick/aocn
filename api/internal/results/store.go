@@ -54,3 +54,26 @@ func (s *Store) Record(ctx context.Context, user users.User, result Result) erro
 	}
 	return tx.Commit(ctx)
 }
+
+// FirstPasses returns, for each door the user ever passed, when they first did. Runs from
+// before a door opened (previewers) are in it too; which doors to show is up to the caller.
+func (s *Store) FirstPasses(ctx context.Context, githubUserID int64) (map[int]time.Time, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT door, min(created_at) FROM verify_results
+		WHERE github_user_id = $1 AND passed
+		GROUP BY door`, githubUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	passes := map[int]time.Time{}
+	for rows.Next() {
+		var door int
+		var at time.Time
+		if err := rows.Scan(&door, &at); err != nil {
+			return nil, err
+		}
+		passes[door] = at
+	}
+	return passes, rows.Err()
+}

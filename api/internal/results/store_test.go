@@ -67,3 +67,35 @@ func TestRecordKeepsEveryRunAndTheNewestLogin(t *testing.T) {
 		t.Errorf("runs: got %v, want [false true]", got)
 	}
 }
+
+func TestFirstPassesKeepsTheFirstPassOfEachDoor(t *testing.T) {
+	store, _ := testStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 12, 1, 6, 30, 0, 0, time.UTC)
+	octo := users.User{GitHubID: 42, Login: "octo", AvatarURL: "a"}
+	other := users.User{GitHubID: 43, Login: "other", AvatarURL: "b"}
+
+	runs := []struct {
+		user   users.User
+		result Result
+	}{
+		{octo, Result{Door: 1, Passed: false, Checks: []CheckResult{}, At: at}},
+		{octo, Result{Door: 1, Passed: true, Checks: []CheckResult{}, At: at.Add(time.Hour)}},
+		{octo, Result{Door: 1, Passed: true, Checks: []CheckResult{}, At: at.Add(2 * time.Hour)}},
+		{octo, Result{Door: 2, Passed: false, Checks: []CheckResult{}, At: at}},
+		{other, Result{Door: 2, Passed: true, Checks: []CheckResult{}, At: at}},
+	}
+	for _, r := range runs {
+		if err := store.Record(ctx, r.user, r.result); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	passes, err := store.FirstPasses(ctx, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(passes) != 1 || !passes[1].Equal(at.Add(time.Hour)) {
+		t.Errorf("got %v", passes)
+	}
+}

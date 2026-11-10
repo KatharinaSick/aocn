@@ -39,3 +39,26 @@ func TestGetUnknownUser(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestByLoginIgnoresCaseAndFindsWhoHasItNow(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 12, 1, 6, 30, 0, 0, time.UTC)
+
+	// 8 was octo, renamed; 9 took the login later. 8's row still says octo until they log in
+	// or verify again.
+	if err := store.Save(ctx, User{GitHubID: 8, Login: "octo", AvatarURL: "a"}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(ctx, User{GitHubID: 9, Login: "Octo", AvatarURL: "b"}, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	got, since, err := store.ByLogin(ctx, "OCTO")
+	if err != nil || got.GitHubID != 9 || got.Login != "Octo" || !since.Equal(at.Add(time.Hour)) {
+		t.Fatalf("got %+v since %v, %v", got, since, err)
+	}
+	if _, _, err := store.ByLogin(ctx, "nobody"); err != ErrNotFound {
+		t.Errorf("unknown login: %v", err)
+	}
+}

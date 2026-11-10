@@ -145,7 +145,7 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 		},
 		Results: a.results,
 		Now:     func() time.Time { return now },
-	}, Auth{})
+	}, Auth{}, Profiles{})
 	return a
 }
 

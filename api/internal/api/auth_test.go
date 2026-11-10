@@ -77,7 +77,7 @@ func authAt(t *testing.T, oauth OAuthApp) authAPI {
 		SessionKey: sessionKey,
 		SiteURL:    "https://aocn.dev",
 		Now:        func() time.Time { return loginNow },
-	})
+	}, Profiles{})
 	return a
 }
 

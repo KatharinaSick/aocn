@@ -78,6 +78,7 @@ func main() {
 		os.Exit(1)
 	}
 	githubUsers := github.NewUsers()
+	resultStore := results.NewStore(pool)
 	doorsAPI := api.Doors{
 		Schedule:   sched,
 		Storage:    doorStorage,
@@ -85,16 +86,19 @@ func main() {
 		Checks:     &doors.Checks{Storage: doorStorage},
 		Users:      githubUsers,
 		Previewers: cfg.PreviewerAccess,
-		Results:    results.NewStore(pool),
+		Results:    resultStore,
 	}
 	log.Info("Previewers loaded", "count", len(cfg.PreviewerAccess))
+
+	userStore := users.NewStore(pool)
+	profiles := api.Profiles{Schedule: sched, Users: userStore, Results: resultStore}
 
 	// WriteTimeout is also the longest a bundle download may take: past it the connection
 	// drops and aocn open reports a broken download. Fine while bundles are small; bigger
 	// bundles or slower players mean raising it, or handing out signed bucket URLs instead.
 	httpServer := &http.Server{
 		Addr:         net.JoinHostPort("", cfg.Server.Port),
-		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI, auth(log, cfg, githubUsers, users.NewStore(pool))),
+		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI, auth(log, cfg, githubUsers, userStore), profiles),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
