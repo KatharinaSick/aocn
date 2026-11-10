@@ -1,11 +1,15 @@
 ---
 // The station console's header on every page: POLARIS-7's mark and name on the left,
-// the site navigation on the right.
+// the site navigation on the right, and who is logged in (see lib/account.ts).
+import { doorOpensAt } from '../lib/doors';
 
 // "doors" joins in December, when there are doors. Until then the logo leads home.
 const links = [{ href: '/how-it-works', label: 'how it works' }];
 
 const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
+
+// Logging in shows up when door 1 opens, without a build: the script below compares the clock.
+const loginOpensAt = doorOpensAt(1).toISOString();
 ---
 
 <header class="siteHeader">
@@ -24,10 +28,41 @@ const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
         {link.label}
       </a>
     ))}
+    <!-- Filled in by the script below; without it, nobody is logged in as far as the page knows. -->
+    <a class="siteHeaderLink siteHeaderLogIn" href="/api/auth/github/login" data-opens-at={loginOpensAt} hidden>
+      log in
+    </a>
+    <span class="siteHeaderAccount" hidden>
+      <span class="siteHeaderLogin"></span>
+      <button class="siteHeaderLink siteHeaderLogOut" type="button">log out</button>
+    </span>
   </nav>
 </header>
 
 <script>
+  import { accountAt, fetchMe, loginHref } from '../lib/account';
+
+  // Asked after the page is shown, so the page itself stays the same for everyone.
+  const logIn = document.querySelector<HTMLAnchorElement>('.siteHeaderLogIn');
+  const account = document.querySelector<HTMLElement>('.siteHeaderAccount');
+  if (logIn && account) {
+    const opensAt = new Date(logIn.dataset.opensAt ?? '');
+    fetchMe().then((me) => {
+      const shown = accountAt(me, new Date(), opensAt);
+      if (shown.state === 'loggedIn') {
+        account.querySelector('.siteHeaderLogin')!.textContent = `@${shown.me.login}`;
+        account.hidden = false;
+      } else if (shown.state === 'loggedOut') {
+        logIn.href = loginHref(window.location.pathname);
+        logIn.hidden = false;
+      }
+    });
+    account.querySelector('.siteHeaderLogOut')?.addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+      window.location.reload();
+    });
+  }
+
   // See-through only while nothing is underneath: at the very top the sky shows behind
   // the header as designed. Without this script the header simply stays solid.
   const header = document.querySelector('.siteHeader');
@@ -99,10 +134,42 @@ const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
     border-bottom: 1px solid var(--color-aurora);
   }
 
+  /* The links' display would beat the hidden attribute. */
+  .siteHeaderLogIn[hidden] {
+    display: none;
+  }
+
+  .siteHeaderAccount:not([hidden]) {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .siteHeaderLogin {
+    color: var(--color-muted);
+  }
+
+  /* A button that looks like the links next to it: it logs out, it doesn't go anywhere. */
+  .siteHeaderLogOut {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+  }
+
   /* Mobile: her mark and name only, no subtitle, and the nav link is a full tap target. */
   @media (max-width: 799px) {
+    /* When her name and the links don't fit on one row, the links move to a second one. */
     .siteHeader {
+      flex-wrap: wrap;
+      justify-content: space-between;
+      column-gap: var(--space-6);
       padding-block: var(--space-4);
+    }
+
+    .siteHeaderNav {
+      margin-left: auto;
     }
 
     .siteHeaderName {
@@ -117,6 +184,20 @@ const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
       display: inline-flex;
       align-items: center;
       min-height: var(--size-touch);
+      white-space: nowrap;
+    }
+
+    /* No room for the login next to her name; "log out" says enough. */
+    .siteHeaderLogin {
+      display: none;
+    }
+  }
+
+  /* The narrowest phones: her mark alone, so the links still fit on the same row. Moving them
+     to a second row would push the page down over a brighter part of the sky. */
+  @media (max-width: 359px) {
+    .siteHeaderName {
+      display: none;
     }
 
     /* A border would sit at the bottom of the 48px tap target, far below the word. */
