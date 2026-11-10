@@ -74,15 +74,14 @@ export interface DoorCell {
   state: 'fixed' | 'open' | 'closed';
 }
 
-/** One cell per door in the schedule, for the strip on the card. */
+/** One cell per door in the schedule, by the doors' numbers, for the strip on the card. */
 export function doorCells(
   solved: Map<number, Date>,
-  doorCount: number,
+  doorNumbers: number[],
   isDoorOpen: (door: number, now: Date) => boolean,
   now: Date,
 ): DoorCell[] {
-  return Array.from({ length: doorCount }, (_, i) => {
-    const door = i + 1;
+  return doorNumbers.map((door) => {
     if (!isDoorOpen(door, now)) {
       return { door, state: 'closed' };
     }

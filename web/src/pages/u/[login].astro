@@ -10,7 +10,7 @@
 import PolaFace from '../../components/PolaFace.astro';
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { DOOR_COUNT, formatStationDay, formatStationDayLong, isDoorOpen } from '../../lib/doors';
+import { DOOR_COUNT, DOOR_NUMBERS, formatStationDay, formatStationDayLong, isDoorOpen } from '../../lib/doors';
 import { assess, doorCells, fetchProfile, profileCacheHeaders, profileLine } from '../../lib/profile';
 
 export const prerender = false;
@@ -30,7 +30,7 @@ for (const [name, value] of Object.entries(cacheHeaders)) {
 }
 
 const profile = answer.state === 'found' ? answer.profile : undefined;
-const cells = profile ? doorCells(profile.solved, DOOR_COUNT, isDoorOpen, new Date()) : [];
+const cells = profile ? doorCells(profile.solved, DOOR_NUMBERS, isDoorOpen, new Date()) : [];
 const fixed = cells.filter((c) => c.state === 'fixed').length;
 const assessment = assess(fixed, DOOR_COUNT);
 const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not open yet' };

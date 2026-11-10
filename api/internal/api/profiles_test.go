@@ -15,7 +15,7 @@ import (
 
 var octo = users.User{GitHubID: 42, Login: "Octo", AvatarURL: "https://example.com/42.png"}
 
-// fakeProfiles knows octo, who passed door 1 an hour after it opened and door 2 the day
+// fakeProfiles knows octo, who passed door 1 an hour after it opened and door 3 the day
 // before it opened, as a previewer.
 type fakeProfiles struct{ down bool }
 
@@ -37,7 +37,7 @@ func (f fakeProfiles) FirstPasses(_ context.Context, id int64) (map[int]time.Tim
 	}
 	return map[int]time.Time{
 		1: door1OpensAt.Add(time.Hour),
-		2: door2OpensAt.Add(-24 * time.Hour),
+		3: door3OpensAt.Add(-24 * time.Hour),
 	}, nil
 }
 
@@ -77,12 +77,12 @@ func TestProfile(t *testing.T) {
 
 // A previewer's pass shows only once the door is open, not a second earlier.
 func TestProfileShowsADoorOnlyOnceItsOpen(t *testing.T) {
-	if got := profileAt(t, door2OpensAt.Add(-time.Second)).Doors; len(got) != 1 {
-		t.Errorf("before door 2 opens: %+v", got)
+	if got := profileAt(t, door3OpensAt.Add(-time.Second)).Doors; len(got) != 1 {
+		t.Errorf("before door 3 opens: %+v", got)
 	}
-	got := profileAt(t, door2OpensAt).Doors
-	if len(got) != 2 || got[0].Door != 1 || got[1].Door != 2 {
-		t.Errorf("once door 2 is open: %+v", got)
+	got := profileAt(t, door3OpensAt).Doors
+	if len(got) != 2 || got[0].Door != 1 || got[1].Door != 3 {
+		t.Errorf("once door 3 is open: %+v", got)
 	}
 }
 

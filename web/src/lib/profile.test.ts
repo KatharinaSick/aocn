@@ -67,16 +67,17 @@ describe('readProfileAnswer', () => {
 
 describe('doorCells', () => {
   const openUpTo = (last: number) => (door: number) => door <= last;
+  const doors = [1, 3, 5, 7];
   const now = new Date('2026-12-05T12:00:00Z');
 
   it('marks fixed, open and closed doors', () => {
-    const solved = new Map([[2, now]]);
-    expect(doorCells(solved, 4, openUpTo(3), now).map((c) => c.state)).toEqual(['open', 'fixed', 'open', 'closed']);
+    const solved = new Map([[3, now]]);
+    expect(doorCells(solved, doors, openUpTo(5), now).map((c) => c.state)).toEqual(['open', 'fixed', 'open', 'closed']);
   });
 
   it("never shows a door as fixed before it's open", () => {
-    const solved = new Map([[4, now]]);
-    expect(doorCells(solved, 4, openUpTo(3), now)[3]).toEqual({ door: 4, state: 'closed' });
+    const solved = new Map([[7, now]]);
+    expect(doorCells(solved, doors, openUpTo(5), now)[3]).toEqual({ door: 7, state: 'closed' });
   });
 });
 
