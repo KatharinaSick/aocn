@@ -171,11 +171,13 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     color: var(--color-text);
   }
 
+  /* Room around her verdict and the doors: this page is looked at, not read. */
   .profileAssessment {
     display: flex;
     align-items: center;
-    gap: var(--space-6);
-    padding: var(--space-6);
+    gap: var(--space-8);
+    margin-top: var(--space-8);
+    padding: var(--space-8);
     border: 1px solid var(--color-line-strong);
     border-radius: var(--radius-screen);
     background: var(--color-panel-glass);
@@ -183,7 +185,7 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
 
   .profileAssessmentText {
     display: grid;
-    gap: var(--space-2);
+    gap: var(--space-3);
   }
 
   .profileAssessmentLead,
@@ -208,7 +210,8 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
 
   .profileDoorsSection {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--space-4);
+    margin-top: var(--space-8);
   }
 
   .profileDoorsSection .profileDoorsTitle {
@@ -233,7 +236,7 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     display: grid;
     /* Two rows of six on phones, all doors in one row from tablets up. */
     grid-template-columns: repeat(6, 1fr);
-    gap: var(--space-2);
+    gap: var(--space-3);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -245,11 +248,17 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     }
   }
 
+  @media (max-width: 599px) {
+    .profileDoors {
+      gap: var(--space-2);
+    }
+  }
+
   .profileDoor {
     display: grid;
     justify-items: center;
-    gap: var(--space-1);
-    padding: var(--space-3) 0;
+    gap: var(--space-2);
+    padding: var(--space-4) 0;
     border: 1px solid var(--color-line-strong);
     border-radius: var(--radius-screen);
     background: var(--color-panel);
@@ -285,6 +294,10 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     font-weight: var(--font-weight-regular);
   }
 
+  .profileLogOutRow {
+    margin-top: var(--space-8);
+  }
+
   .profileLogOut {
     padding: 0;
     border: none;
@@ -305,8 +318,9 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     .profileAssessment {
       flex-direction: column;
       align-items: flex-start;
-      gap: var(--space-4);
-      padding: var(--space-4);
+      gap: var(--space-6);
+      margin-top: var(--space-6);
+      padding: var(--space-6);
     }
   }
 </style>
