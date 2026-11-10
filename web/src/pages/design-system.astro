@@ -378,10 +378,11 @@ const colorGroups = [
             is a <code>size-touch</code> tap target.
           </li>
           <li>
-            Last in the navigation: <code>log in</code>, or the login of whoever is logged in and <code>log out</code>.
-            The page asks <code>/api/me</code> after it's shown, so pages stay the same for everyone. <code>log in</code>
-            only shows from door 1's opening; someone already logged in shows before that too. On mobile the login is
-            left out, and below 360px so is her name, so the links stay on the same row as her mark.
+            Last in the navigation: <code>log in</code>, or <code>@login</code> of whoever is logged in, a link to
+            their card, where they log out. The page asks <code>/api/me</code> after it's shown, so pages stay the same
+            for everyone. <code>log in</code> only shows from door 1's opening; someone already logged in shows before
+            that too. On mobile a long login is cut off with an ellipsis, and her name is left out below 360px (440px
+            when someone is logged in), so the links stay on the same row as her mark.
           </li>
           <li>
             The footer is small and muted: the domain, <code>privacy</code> and <code>imprint</code> on the left, the

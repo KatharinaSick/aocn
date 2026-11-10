@@ -44,3 +44,8 @@ export function accountAt(me: Me | null, now: Date, loginOpensAt: Date): Account
 export function loginHref(path: string): string {
   return `/api/auth/github/login?return=${encodeURIComponent(path)}`;
 }
+
+/** Someone's profile card. */
+export function profileHref(login: string): string {
+  return `/u/${encodeURIComponent(login)}`;
+}

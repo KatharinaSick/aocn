@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountAt, fetchMe, loginHref } from './account';
+import { accountAt, fetchMe, loginHref, profileHref } from './account';
 
 const opensAt = new Date('2026-12-01T06:00:00+01:00');
 const me = { login: 'octo', avatarUrl: 'https://example.com/a.png' };
@@ -43,5 +43,11 @@ describe('accountAt', () => {
 describe('loginHref', () => {
   it('comes back to the page', () => {
     expect(loginHref('/doors/3')).toBe('/api/auth/github/login?return=%2Fdoors%2F3');
+  });
+});
+
+describe('profileHref', () => {
+  it('is the card under /u/', () => {
+    expect(profileHref('Octo-Cat')).toBe('/u/Octo-Cat');
   });
 });

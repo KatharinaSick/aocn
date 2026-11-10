@@ -32,34 +32,33 @@ const loginOpensAt = doorOpensAt(1).toISOString();
     <a class="siteHeaderLink siteHeaderLogIn" href="/api/auth/github/login" data-opens-at={loginOpensAt} hidden>
       log in
     </a>
-    <span class="siteHeaderAccount" hidden>
-      <span class="siteHeaderLogin"></span>
-      <button class="siteHeaderLink siteHeaderLogOut" type="button">log out</button>
-    </span>
+    <!-- Who is logged in, linking to their card, where they can log out. -->
+    <a class="siteHeaderLink siteHeaderAccount" href="/" hidden><span class="siteHeaderAccountName"></span></a>
   </nav>
 </header>
 
 <script>
-  import { accountAt, fetchMe, loginHref } from '../lib/account';
+  import { accountAt, fetchMe, loginHref, profileHref } from '../lib/account';
 
   // Asked after the page is shown, so the page itself stays the same for everyone.
   const logIn = document.querySelector<HTMLAnchorElement>('.siteHeaderLogIn');
-  const account = document.querySelector<HTMLElement>('.siteHeaderAccount');
+  const account = document.querySelector<HTMLAnchorElement>('.siteHeaderAccount');
   if (logIn && account) {
     const opensAt = new Date(logIn.dataset.opensAt ?? '');
     fetchMe().then((me) => {
       const shown = accountAt(me, new Date(), opensAt);
       if (shown.state === 'loggedIn') {
-        account.querySelector('.siteHeaderLogin')!.textContent = `@${shown.me.login}`;
+        account.querySelector('.siteHeaderAccountName')!.textContent = `@${shown.me.login}`;
+        account.closest('.siteHeader')?.classList.add('siteHeaderLoggedIn');
+        account.href = profileHref(shown.me.login);
+        if (window.location.pathname.replace(/\/$/, '') === account.pathname) {
+          account.setAttribute('aria-current', 'page');
+        }
         account.hidden = false;
       } else if (shown.state === 'loggedOut') {
         logIn.href = loginHref(window.location.pathname);
         logIn.hidden = false;
       }
-    });
-    account.querySelector('.siteHeaderLogOut')?.addEventListener('click', async () => {
-      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
-      window.location.reload();
     });
   }
 
@@ -135,27 +134,9 @@ const loginOpensAt = doorOpensAt(1).toISOString();
   }
 
   /* The links' display would beat the hidden attribute. */
-  .siteHeaderLogIn[hidden] {
+  .siteHeaderLogIn[hidden],
+  .siteHeaderAccount[hidden] {
     display: none;
-  }
-
-  .siteHeaderAccount:not([hidden]) {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-  }
-
-  .siteHeaderLogin {
-    color: var(--color-muted);
-  }
-
-  /* A button that looks like the links next to it: it logs out, it doesn't go anywhere. */
-  .siteHeaderLogOut {
-    padding: 0;
-    border: none;
-    background: none;
-    font: inherit;
-    cursor: pointer;
   }
 
   /* Mobile: her mark and name only, no subtitle, and the nav link is a full tap target. */
@@ -187,9 +168,18 @@ const loginOpensAt = doorOpensAt(1).toISOString();
       white-space: nowrap;
     }
 
-    /* No room for the login next to her name; "log out" says enough. */
-    .siteHeaderLogin {
-      display: none;
+    /* A long login would push the links onto a second row. */
+    .siteHeaderAccountName {
+      max-width: 12ch;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* A border would sit at the bottom of the 48px tap target, far below the word. */
+    .siteHeaderLink[aria-current='page'] {
+      border-bottom: none;
+      text-decoration: underline;
+      text-underline-offset: var(--space-1);
     }
   }
 
@@ -199,12 +189,12 @@ const loginOpensAt = doorOpensAt(1).toISOString();
     .siteHeaderName {
       display: none;
     }
+  }
 
-    /* A border would sit at the bottom of the 48px tap target, far below the word. */
-    .siteHeaderLink[aria-current='page'] {
-      border-bottom: none;
-      text-decoration: underline;
-      text-underline-offset: var(--space-1);
+  /* A login takes more room than "log in", so her name gives way on more phones. */
+  @media (max-width: 439px) {
+    .siteHeaderLoggedIn .siteHeaderName {
+      display: none;
     }
   }
 </style>
