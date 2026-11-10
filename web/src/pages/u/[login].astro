@@ -1,0 +1,211 @@
+---
+// Someone's profile card: who they are and which doors they fixed, from GET /users/{login}.
+//
+// Rendered on each request, because a login isn't known until someone visits and the link
+// preview has to show real progress (see AGENTS.md → Rendering). No logic here beyond
+// showing the answer: the API decides which doors count.
+//
+// The card is the same for everyone, so Netlify caches it. "log out" is only on your own
+// card, and that's decided in the browser after the page is shown.
+import TextPage from '../../components/TextPage.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { DOOR_COUNT, formatStationDay, formatStationDayLong, isDoorOpen } from '../../lib/doors';
+import { doorCells, fetchProfile, profileCacheHeaders, profileLine } from '../../lib/profile';
+
+export const prerender = false;
+
+const answer = await fetchProfile(import.meta.env.API_URL, Astro.params.login ?? '');
+const cacheHeaders = profileCacheHeaders(answer);
+if (answer.state === 'missing') {
+  // An empty 404 makes Astro answer with the prerendered 404 page.
+  return new Response(null, { status: 404, headers: cacheHeaders });
+}
+if (answer.state === 'unavailable') {
+  Astro.response.status = 503;
+  Astro.response.headers.set('Retry-After', '120');
+}
+for (const [name, value] of Object.entries(cacheHeaders)) {
+  Astro.response.headers.set(name, value);
+}
+
+const profile = answer.state === 'found' ? answer.profile : undefined;
+const cells = profile ? doorCells(profile.solved, DOOR_COUNT, isDoorOpen, new Date()) : [];
+const fixed = cells.filter((c) => c.state === 'fixed').length;
+const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not open yet' };
+---
+
+{
+  profile ? (
+    <BaseLayout
+      title={`@${profile.login}`}
+      description={`@${profile.login} fixed ${fixed} of ${DOOR_COUNT} doors on Advent of Cloud Native.`}
+      pola={profileLine(cells)}
+    >
+      <TextPage command="$ whoami" title={profile.login}>
+        <div class="profileWho">
+          {profile.avatarUrl && (
+            <img class="profileAvatar" src={profile.avatarUrl} width="64" height="64" alt="" />
+          )}
+          <p>
+            <a href={`https://github.com/${profile.login}`} target="_blank" rel="noopener">
+              @{profile.login}
+            </a>
+            <br />
+            <span class="profileSince">
+              station engineer since <time datetime={profile.since.toISOString()} aria-label={formatStationDayLong(profile.since)}>{formatStationDay(profile.since)}</time>
+            </span>
+          </p>
+        </div>
+
+        <h2 class="profileCount">
+          doors fixed <span class="profileCountNumber">{fixed} / {DOOR_COUNT}</span>
+        </h2>
+        <ol class="profileDoors">
+          {cells.map((cell) => (
+            <li class={`profileDoor profileDoor-${cell.state}`}>
+              <span aria-hidden="true">
+                {String(cell.door).padStart(2, '0')}
+                {cell.state === 'fixed' ? '✓' : cell.state === 'closed' ? '·' : ''}
+              </span>
+              <span class="srOnly">
+                door {cell.door}: {cellLabel[cell.state]}
+              </span>
+            </li>
+          ))}
+        </ol>
+
+        <p class="profileLogOutRow" data-login={profile.login} hidden>
+          <button class="profileLogOut" type="button">log out</button>
+        </p>
+      </TextPage>
+    </BaseLayout>
+  ) : (
+    <BaseLayout
+      title="profile"
+      description="This profile can't be shown right now."
+      noindex
+      pola={{ mood: 'annoyed', message: 'Something is broken that is not you. For once.' }}
+    >
+      <TextPage command="$ whoami" title="stuck">
+        <p>This profile can't be shown right now. Try again in a few minutes.</p>
+        <p>
+          <a href="/">back home</a>
+        </p>
+      </TextPage>
+    </BaseLayout>
+  )
+}
+
+<script>
+  import { fetchMe } from '../../lib/account';
+
+  // Only on your own card. Logins ignore case on GitHub.
+  const row = document.querySelector<HTMLElement>('.profileLogOutRow');
+  if (row) {
+    fetchMe().then((me) => {
+      if (me && me.login.toLowerCase() === row.dataset.login?.toLowerCase()) {
+        row.hidden = false;
+      }
+    });
+    row.querySelector('.profileLogOut')?.addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+      window.location.reload();
+    });
+  }
+</script>
+
+<style>
+  .profileWho {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .profileAvatar {
+    border-radius: var(--radius-dot);
+    border: 1px solid var(--color-line-strong);
+  }
+
+  .profileSince {
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .profileCount {
+    margin-top: var(--space-6);
+    font-size: var(--font-size-caps);
+    line-height: var(--line-height-caps);
+    letter-spacing: var(--letter-spacing-caps);
+    font-weight: var(--font-weight-regular);
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  .profileCountNumber {
+    color: var(--color-text);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .profileDoors {
+    display: grid;
+    /* Two rows of six on phones, all doors in one row from tablets up. */
+    grid-template-columns: repeat(6, 1fr);
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (min-width: 800px) {
+    .profileDoors {
+      grid-template-columns: repeat(12, 1fr);
+    }
+  }
+
+  .profileDoor {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--size-touch);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-screen);
+    background: var(--color-panel);
+    color: var(--color-text-soft);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .profileDoor-fixed {
+    border-color: var(--color-aurora);
+    background: var(--color-panel-new);
+    box-shadow: var(--glow-new);
+    color: var(--color-aurora);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .profileDoor-closed {
+    border-color: var(--color-line);
+    color: var(--color-muted);
+  }
+
+  .profileLogOutRow {
+    margin-top: var(--space-6);
+  }
+
+  /* Looks like a link: it logs out, it doesn't take you anywhere. */
+  .profileLogOut {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: var(--space-1);
+    cursor: pointer;
+  }
+
+  .profileLogOut:hover {
+    color: var(--color-aurora);
+  }
+</style>

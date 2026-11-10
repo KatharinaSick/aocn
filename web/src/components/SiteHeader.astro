@@ -51,7 +51,8 @@ const loginOpensAt = doorOpensAt(1).toISOString();
         account.querySelector('.siteHeaderAccountName')!.textContent = `@${shown.me.login}`;
         account.closest('.siteHeader')?.classList.add('siteHeaderLoggedIn');
         account.href = profileHref(shown.me.login);
-        if (window.location.pathname.replace(/\/$/, '') === account.pathname) {
+        // Logins ignore case, so /u/octo is Octo's card too.
+        if (window.location.pathname.replace(/\/$/, '').toLowerCase() === account.pathname.toLowerCase()) {
           account.setAttribute('aria-current', 'page');
         }
         account.hidden = false;
