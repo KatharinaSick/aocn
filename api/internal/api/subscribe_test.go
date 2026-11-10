@@ -91,7 +91,7 @@ func newTestHandlerWithStore(m *fakeMailer, store *fakeStore) http.Handler {
 		SigningKey: testKey,
 		SiteURL:    "https://aocn.dev",
 		Now:        func() time.Time { return testNow },
-	}, Doors{})
+	}, Doors{}, Auth{})
 }
 
 func post(h http.Handler, path, body, ip string) *httptest.ResponseRecorder {

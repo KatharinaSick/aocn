@@ -22,8 +22,8 @@ doors:
   dir: ${DOORS_DIR}
 
 site:
-  # Where links in emails point. Empty falls back to https://aocn.dev; set
-  # SITE_URL=http://localhost:4321 to click a confirmation link through locally.
+  # Where links in emails point, and where GitHub sends people back after logging in. Empty
+  # falls back to https://aocn.dev; `devbox run api` sets http://localhost:4321.
   url: ${SITE_URL}
 
 database:
@@ -42,6 +42,20 @@ resend:
 subscribe:
   # Signs the link in the confirmation email.
   signingKey: ${SUBSCRIBE_SIGNING_KEY}
+
+# The GitHub OAuth app people log in to the website with. The CLI uses the same app, with the
+# device flow. The client ID is public; Cloud Run gets it from infra/, the secret from Secret
+# Manager. Its one callback URL is https://aocn.dev/api/auth/github/callback, so logging in
+# locally needs a second OAuth app with http://localhost:4321/api/auth/github/callback; set
+# both variables for `devbox run api` (see README.md). Without them, dev mode has no login.
+github:
+  clientId: ${GITHUB_CLIENT_ID}
+  clientSecret: ${GITHUB_CLIENT_SECRET}
+
+session:
+  # Signs the session cookie of whoever logged in on the website. Rotating it logs everyone
+  # out. In dev mode a random one is used when it's empty.
+  signingKey: ${SESSION_SIGNING_KEY}
 
 # Who gets which doors early, to test and review them: GitHub user IDs with all their doors or
 # some, separated by spaces, like "9420018:all 7654321:1 1111111:3,5". From Secret Manager on

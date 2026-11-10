@@ -17,7 +17,7 @@
       "[ -f \"$PGDATA/PG_VERSION\" ] || initdb --username=postgres --auth=trust --encoding=UTF8 --locale=C --no-instructions > /dev/null"
     ],
     "scripts": {
-      "api":   "AOCN_DEV=true DOORS_DIR=../../aocn-challenges/build DATABASE_URL=\"postgres://postgres@/postgres?host=$PGHOST&port=$PGPORT\" go run -C api ./cmd/api-server",
+      "api":   "set -a; [ ! -f api/.env.local ] || . api/.env.local; set +a; AOCN_DEV=true SITE_URL=\"${SITE_URL:-http://localhost:4321}\" DOORS_DIR=../../aocn-challenges/build DATABASE_URL=\"postgres://postgres@/postgres?host=$PGHOST&port=$PGPORT\" go run -C api ./cmd/api-server",
       "web":   "npm run dev --prefix web",
       "build": "npm run build --prefix web && go build -C api -o /dev/null ./cmd/api-server && go build -C cli -o /dev/null ./cmd/aocn",
       "test":  "TEST_DATABASE_URL=\"postgres://postgres@/postgres?host=$PGHOST&port=$PGPORT\" go -C api test ./... && go -C cli test ./... && npm test --prefix web"

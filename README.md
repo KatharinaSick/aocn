@@ -34,6 +34,19 @@ repository next to this one, after `make bundle` there. To see a door before Dec
 date in `schedule.yaml` (and don't commit that). `aocn open` asks the API at
 `$AOCN_API_URL`, `https://aocn.dev/api` when unset: `AOCN_API_URL=http://localhost:8080 aocn open 1`.
 
+Logging in on the website locally needs a GitHub OAuth app of your own, since the real one
+sends people back to aocn.dev only. Create one under GitHub → Settings → Developer settings →
+OAuth Apps, with `http://localhost:4321` as homepage and
+`http://localhost:4321/api/auth/github/callback` as callback URL, and put its ID and a client
+secret in `api/.env.local` (ignored by git), which `devbox run api` reads:
+
+```sh
+GITHUB_CLIENT_ID=Ov23...
+GITHUB_CLIENT_SECRET=...
+```
+
+Without it, everything else works and logging in says it isn't set up.
+
 Run the tests with `devbox run test`, and a full build with `devbox run build`. Both include the CLI.
 
 ## Deployment

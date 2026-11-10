@@ -14,9 +14,9 @@ import (
 // There is no CORS layer: the website reaches the API through Netlify's /api/*
 // rewrite and Astro's dev-server proxy, so the browser only ever talks to its own
 // origin. Adding a direct cross-origin caller would mean revisiting that.
-func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors) http.Handler {
+func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors, auth Auth) http.Handler {
 	mux := http.NewServeMux()
-	addRoutes(mux, log, subscriptions, doors)
+	addRoutes(mux, log, subscriptions, doors, auth)
 
 	// otelhttp names the span after the matched route and continues an incoming
 	// traceparent, so requests arriving from the website or the CLI stay on one trace.
@@ -30,7 +30,7 @@ func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors) http.H
 	return requestLogger(log, handler)
 }
 
-func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, doors Doors) {
+func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, doors Doors, auth Auth) {
 	mux.Handle("GET /health", handleHealth())
 	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow)(handleSubscribe(log, subscriptions)))
 	// Confirming is limited too: a valid token can be replayed until it expires, and
@@ -46,6 +46,12 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	// be verified more than a few times a minute, so a limit per user is the first thing to
 	// add if anyone floods it.
 	mux.Handle("POST /doors/{door}/verify", handleVerify(log, doors))
+	// Logging in isn't limited: a code from GitHub can't be made up, and a workshop logging
+	// in together shares one address.
+	mux.Handle("GET /auth/github/login", handleLogin(auth))
+	mux.Handle("GET /auth/github/callback", handleCallback(log, auth))
+	mux.Handle("POST /auth/logout", handleLogout(auth))
+	mux.Handle("GET /me", handleMe(log, auth))
 }
 
 // spanName labels spans by the matched route pattern (e.g. "GET /health"). When no

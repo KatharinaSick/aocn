@@ -17,6 +17,7 @@ import (
 	"github.com/katharinasick/aocn/api/internal/github"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
 // Everything was uploaded weeks before. These handlers decide on each request whether a
@@ -49,7 +50,7 @@ type Users interface {
 
 // ResultStore keeps what aocn verify sends.
 type ResultStore interface {
-	Record(ctx context.Context, user results.User, result results.Result) error
+	Record(ctx context.Context, user users.User, result results.Result) error
 }
 
 func (d Doors) now() time.Time {
@@ -282,7 +283,7 @@ func handleVerify(log app.Logger, d Doors) http.Handler {
 			return
 		}
 
-		user := results.User{GitHubID: a.caller.ID, Login: a.caller.Login, AvatarURL: a.caller.AvatarURL}
+		user := users.User{GitHubID: a.caller.ID, Login: a.caller.Login, AvatarURL: a.caller.AvatarURL}
 		result := results.Result{Door: a.door, Passed: passed, Checks: ordered, At: d.now()}
 		if err := d.Results.Record(r.Context(), user, result); err != nil {
 			log.Error("Saving a result failed", "door", a.door, "error", err)

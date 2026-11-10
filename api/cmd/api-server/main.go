@@ -20,6 +20,7 @@ import (
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
 	"github.com/katharinasick/aocn/api/internal/subscribe"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
 // shutdownTimeout bounds how long in-flight requests and the final span export get
@@ -76,12 +77,13 @@ func main() {
 		flush(log, shutdownOTel)
 		os.Exit(1)
 	}
+	githubUsers := github.NewUsers()
 	doorsAPI := api.Doors{
 		Schedule:   sched,
 		Storage:    doorStorage,
 		Pages:      &doors.Pages{Storage: doorStorage},
 		Checks:     &doors.Checks{Storage: doorStorage},
-		Users:      github.NewUsers(),
+		Users:      githubUsers,
 		Previewers: cfg.PreviewerAccess,
 		Results:    results.NewStore(pool),
 	}
@@ -92,7 +94,7 @@ func main() {
 	// bundles or slower players mean raising it, or handing out signed bucket URLs instead.
 	httpServer := &http.Server{
 		Addr:         net.JoinHostPort("", cfg.Server.Port),
-		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI),
+		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI, auth(log, cfg, githubUsers, users.NewStore(pool))),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
@@ -165,4 +167,25 @@ func subscriptions(log app.Logger, cfg *app.Config, store api.Store) api.Subscri
 	}
 
 	return s
+}
+
+// auth wires logging in on the website. In dev mode, a missing OAuth app turns logging in
+// off and a missing signing key is replaced by a random one; ParseConfig has already refused
+// both everywhere else.
+func auth(log app.Logger, cfg *app.Config, githubUsers *github.Users, store *users.Store) api.Auth {
+	a := api.Auth{Users: githubUsers, Store: store, SessionKey: []byte(cfg.Session.SigningKey), SiteURL: cfg.Site.URL}
+
+	if cfg.GitHub.ClientSecret != "" {
+		a.OAuth = github.NewOAuth(cfg.GitHub.ClientID, cfg.GitHub.ClientSecret)
+	} else {
+		log.Warn("Dev mode without a GitHub OAuth app, logging in on the website is off")
+	}
+
+	if len(a.SessionKey) == 0 && cfg.Dev {
+		log.Warn("Dev mode without a session signing key, using a random one: logins end on restart")
+		a.SessionKey = make([]byte, 32)
+		rand.Read(a.SessionKey) // never returns an error
+	}
+
+	return a
 }

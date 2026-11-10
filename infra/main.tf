@@ -21,6 +21,10 @@ locals {
     # Who gets which doors early, by GitHub user ID. Not a credential, but kept out of the
     # public repository so it doesn't say who playtests.
     "previewers",
+    # The GitHub OAuth app's client secret, for logging in on the website.
+    "github-client-secret",
+    # Signs the website's session cookie. Rotating it logs everyone out.
+    "session-signing-key",
   ]
 }
 
@@ -441,6 +445,12 @@ resource "google_cloud_run_v2_service" "api" {
         value = google_storage_bucket.doors.name
       }
 
+      # The OAuth app "Advent of Cloud Native". Public: the CLI has the same ID.
+      env {
+        name  = "GITHUB_CLIENT_ID"
+        value = "Ov23lim4gHxoibK0E5Tv"
+      }
+
       # Secrets reach the API as environment variables, which config.yaml expands.
       # "latest" is resolved when a revision starts, so a new secret version takes
       # effect with the next deploy, not before.
@@ -450,6 +460,8 @@ resource "google_cloud_run_v2_service" "api" {
           RESEND_API_KEY        = "resend-api-key"
           SUBSCRIBE_SIGNING_KEY = "subscribe-signing-key"
           PREVIEWERS            = "previewers"
+          GITHUB_CLIENT_SECRET  = "github-client-secret"
+          SESSION_SIGNING_KEY   = "session-signing-key"
         }
 
         content {

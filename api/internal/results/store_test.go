@@ -2,30 +2,18 @@ package results
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/katharinasick/aocn/api/internal/db"
+	"github.com/katharinasick/aocn/api/internal/db/dbtest"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
-// testStore connects to TEST_DATABASE_URL, migrates it and empties the tables. Skipped
-// without it, like the subscribe store's tests.
+// testStore gives each test an empty database of its own.
 func testStore(t *testing.T) (*Store, *pgxpool.Pool) {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
-	pool, err := db.Connect(context.Background(), url)
-	if err != nil {
-		t.Fatalf("connecting: %v", err)
-	}
-	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(context.Background(), "TRUNCATE verify_results, users"); err != nil {
-		t.Fatalf("emptying tables: %v", err)
-	}
+	pool := dbtest.Pool(t, "results")
 	return NewStore(pool), pool
 }
 
@@ -35,12 +23,12 @@ func TestRecordKeepsEveryRunAndTheNewestLogin(t *testing.T) {
 	at := time.Date(2026, 12, 1, 6, 30, 0, 0, time.UTC)
 
 	runs := []struct {
-		user   User
+		user   users.User
 		result Result
 	}{
-		{User{42, "octo", "https://example.com/a.png"}, Result{Door: 1, Checks: []CheckResult{{ID: "a", Got: "403 Forbidden"}}, At: at}},
+		{users.User{GitHubID: 42, Login: "octo", AvatarURL: "https://example.com/a.png"}, Result{Door: 1, Checks: []CheckResult{{ID: "a", Got: "403 Forbidden"}}, At: at}},
 		// Renamed in between.
-		{User{42, "octo-renamed", "https://example.com/b.png"}, Result{Door: 1, Passed: true, Checks: []CheckResult{{ID: "a", Passed: true}}, At: at.Add(time.Hour)}},
+		{users.User{GitHubID: 42, Login: "octo-renamed", AvatarURL: "https://example.com/b.png"}, Result{Door: 1, Passed: true, Checks: []CheckResult{{ID: "a", Passed: true}}, At: at.Add(time.Hour)}},
 	}
 	for _, r := range runs {
 		if err := store.Record(ctx, r.user, r.result); err != nil {

@@ -18,7 +18,8 @@ const defaultSiteURL = "https://aocn.dev"
 
 type Config struct {
 	// Dev turns on stand-ins for local development: emails are logged instead of sent
-	// when there is no Resend key, and a random signing key is used when there is none.
+	// when there is no Resend key, random signing keys are used when there are none, and
+	// logging in on the website is off without a GitHub OAuth app.
 	// Only `devbox run api` sets it. Without it, missing secrets stop the API at startup,
 	// so a broken deploy cannot quietly accept signups that never send an email.
 	Dev bool `yaml:"dev"`
@@ -55,6 +56,16 @@ type Config struct {
 	Subscribe struct {
 		SigningKey string `yaml:"signingKey"`
 	} `yaml:"subscribe"`
+
+	// GitHub is the OAuth app people log in to the website with.
+	GitHub struct {
+		ClientID     string `yaml:"clientId"`
+		ClientSecret string `yaml:"clientSecret"`
+	} `yaml:"github"`
+
+	Session struct {
+		SigningKey string `yaml:"signingKey"`
+	} `yaml:"session"`
 
 	// Previewers get doors early, to test and review them: see ParsePreviewers. GitHub user
 	// IDs, never logins, which can be renamed and then taken by someone else.
@@ -119,11 +130,17 @@ func (c *Config) validate(onCloudRun bool) error {
 		if c.Resend.APIKey != "" && c.Resend.SegmentID == "" {
 			return errors.New("resend.segmentId is required when resend.apiKey is set")
 		}
+		if (c.GitHub.ClientID == "") != (c.GitHub.ClientSecret == "") {
+			return errors.New("github: set clientId and clientSecret together, or neither to go without logging in")
+		}
 		return nil
 	}
 
 	if c.Resend.APIKey == "" || c.Resend.SegmentID == "" || c.Subscribe.SigningKey == "" {
 		return errors.New("resend.apiKey, resend.segmentId and subscribe.signingKey are required; set AOCN_DEV=true for local stand-ins")
+	}
+	if c.GitHub.ClientID == "" || c.GitHub.ClientSecret == "" || c.Session.SigningKey == "" {
+		return errors.New("github.clientId, github.clientSecret and session.signingKey are required; set AOCN_DEV=true for local stand-ins")
 	}
 	return nil
 }

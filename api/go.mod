@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/storage v1.70.0
 	github.com/go-chi/httprate v0.16.0
 	github.com/go-playground/validator/v10 v10.30.5
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/jackc/pgx/v5 v5.11.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0

@@ -19,7 +19,7 @@ func TestHealthReportsOK(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 
-	NewHandler(nopLogger{}, Subscriptions{}, Doors{}).ServeHTTP(rec, req)
+	NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -46,7 +46,7 @@ func TestHealthRejectsNonGET(t *testing.T) {
 			req := httptest.NewRequest(method, "/health", nil)
 			rec := httptest.NewRecorder()
 
-			NewHandler(nopLogger{}, Subscriptions{}, Doors{}).ServeHTTP(rec, req)
+			NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{}).ServeHTTP(rec, req)
 
 			if rec.Code != http.StatusMethodNotAllowed {
 				t.Errorf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
@@ -59,7 +59,7 @@ func TestUnknownRouteIsNotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/nope", nil)
 	rec := httptest.NewRecorder()
 
-	NewHandler(nopLogger{}, Subscriptions{}, Doors{}).ServeHTTP(rec, req)
+	NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{}).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)

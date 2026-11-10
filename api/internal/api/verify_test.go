@@ -11,6 +11,7 @@ import (
 
 	"github.com/katharinasick/aocn/api/internal/doors"
 	"github.com/katharinasick/aocn/api/internal/results"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
 // withAuthorization sends a request with this Authorization header (none if empty).
@@ -73,7 +74,7 @@ func TestVerifyRecordsEveryRun(t *testing.T) {
 		t.Fatalf("recorded %d runs, want 2", len(h.results.recorded))
 	}
 	r := h.results.recorded[1]
-	if r.user != (results.User{GitHubID: 8, Login: "player", AvatarURL: "https://example.com/8.png"}) {
+	if r.user != (users.User{GitHubID: 8, Login: "player", AvatarURL: "https://example.com/8.png"}) {
 		t.Errorf("user: %+v", r.user)
 	}
 	if r.result.Door != 1 || !r.result.Passed || !r.result.At.Equal(now) || len(r.result.Checks) != len(checks) {

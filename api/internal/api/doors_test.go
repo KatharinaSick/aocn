@@ -16,6 +16,7 @@ import (
 	"github.com/katharinasick/aocn/api/internal/github"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
 var (
@@ -107,11 +108,11 @@ type fakeResults struct {
 }
 
 type recorded struct {
-	user   results.User
+	user   users.User
 	result results.Result
 }
 
-func (f *fakeResults) Record(_ context.Context, user results.User, result results.Result) error {
+func (f *fakeResults) Record(_ context.Context, user users.User, result results.Result) error {
 	if f.err != nil {
 		return f.err
 	}
@@ -144,7 +145,7 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 		},
 		Results: a.results,
 		Now:     func() time.Time { return now },
-	})
+	}, Auth{})
 	return a
 }
 
