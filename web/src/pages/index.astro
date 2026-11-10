@@ -6,6 +6,8 @@ import NotifyRow from '../components/NotifyRow.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import {
   DOOR_COUNT,
+  FIRST_DOOR,
+  LAST_DOOR,
   doorOpensAt,
   formatStationClock,
   formatStationDay,
@@ -16,8 +18,8 @@ import { landingStructuredData, toJsonLd } from '../lib/structuredData';
 const description = 'A cloud native advent calendar. 12 CNCF projects. 12 broken things. One very tired station AI.';
 const structuredData = toJsonLd(landingStructuredData(description, new URL('/social.png', Astro.site).href));
 
-const firstDoor = doorOpensAt(1);
-const lastDoor = doorOpensAt(DOOR_COUNT);
+const firstDoor = doorOpensAt(FIRST_DOOR);
+const lastDoor = doorOpensAt(LAST_DOOR);
 
 // "->" is drawn as an arrow by the font's ligature. Screen readers get a sentence instead.
 const schedule = `${DOOR_COUNT} doors · every other day · ${formatStationDay(firstDoor)} -> ${formatStationDay(lastDoor)} · ${formatStationClock(firstDoor)}`;

@@ -10,11 +10,15 @@
  * timestamp type, and yaml.v3 decodes them into Go strings, so neither side guesses: a
  * date needs a date, a time and an offset, or it is rejected.
  */
-import { parseAllDocuments } from 'yaml';
+import { isMap, isScalar, parseAllDocuments, type Scalar } from 'yaml';
 
 export interface Schedule {
-  /** When each door opens, door 1 first, in milliseconds since the epoch. */
-  doors: number[];
+  /**
+   * The doors by number, each with when it opens in milliseconds since the epoch. A door's
+   * number is its day in December (1, 3, 5, …), written out in the file rather than worked
+   * out from its date, so a rehearsal can move a date without renumbering the door.
+   */
+  doors: { door: number; opensAt: number }[];
   /** The two moments POLARIS-7's incident counter counts from, in milliseconds. */
   christmasEve: { beforeSeason: number; finale: number };
 }
@@ -24,12 +28,17 @@ const DATE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z|([+-])(\d{2}):(
 
 const MINUTE = 60 * 1000;
 
+/** How a door's number is written: 1, 3, … 23, never 01, +1 or 1.0. The same as in Go. */
+const DOOR_NUMBER = /^[1-9][0-9]*$/;
+
 /** Parses schedule.yaml. Throws an Error naming the door or key that is wrong. */
 export function parseSchedule(text: string): Schedule {
   // parseAllDocuments rather than parse, so a second document after --- is refused here
   // the way the Go side refuses it, instead of being reported as a syntax error. It does
   // not throw: syntax errors sit on each document, and are reported before anything else.
-  const documents = parseAllDocuments(text);
+  // uniqueKeys is off so a door listed twice gets the same error as on the Go side,
+  // from the check below, instead of the library's own.
+  const documents = parseAllDocuments(text, { uniqueKeys: false });
   for (const document of documents) {
     if (document.errors.length > 0) throw new Error(`not valid YAML: ${document.errors[0].message}`);
   }
@@ -39,14 +48,30 @@ export function parseSchedule(text: string): Schedule {
 
   const top = asMapping(file, 'schedule', ['doors', 'christmasEve']);
 
-  if (!Array.isArray(top.doors) || top.doors.length === 0) {
-    throw new Error('doors: must be a list with at least one date');
+  // The doors as nodes, in the order of the file: toJS would sort the numbers itself.
+  const doorsNode = documents[0]?.get('doors', true);
+  if (!isMap(doorsNode) || doorsNode.items.length === 0) {
+    throw new Error('doors: must map door numbers to dates, with at least one door');
   }
-  const doors = top.doors.map((value, i) => parseDate(value, `door ${i + 1}`));
-  for (let i = 1; i < doors.length; i++) {
-    if (doors[i] <= doors[i - 1]) {
-      throw new Error(`door ${i + 1}: opens at ${top.doors[i]}, not after door ${i}`);
+  const doors: Schedule['doors'] = [];
+  for (const { key, value } of doorsNode.items) {
+    const source = isScalar(key) ? String((key as Scalar).source ?? key.value) : String(key);
+    if (!isScalar(key) || key.type !== 'PLAIN' || !DOOR_NUMBER.test(source)) {
+      throw new Error(`doors: "${source}" is not a door number, like 1 or 23`);
     }
+    const door = Number(source);
+    const previous = doors.at(-1);
+    if (previous && door === previous.door) throw new Error(`door ${door}: listed twice`);
+    if (previous && door < previous.door) {
+      throw new Error(`door ${door}: listed after door ${previous.door}; list the doors by number`);
+    }
+    const raw = isScalar(value) ? value.toJSON() : value;
+    if (value !== null && !isScalar(value)) throw new Error(`door ${door}: not a date`);
+    const opensAt = parseDate(raw, `door ${door}`);
+    if (previous && opensAt <= previous.opensAt) {
+      throw new Error(`door ${door}: opens at ${String(raw)}, not after door ${previous.door}`);
+    }
+    doors.push({ door, opensAt });
   }
 
   const christmasEve = asMapping(top.christmasEve ?? {}, 'christmasEve', ['beforeSeason', 'finale']);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DOOR_COUNT, doorOpensAt } from './doors';
+import { LAST_DOOR, doorOpensAt } from './doors';
 import { landingStructuredData, toJsonLd } from './structuredData';
 
 describe('landingStructuredData', () => {
@@ -7,7 +7,7 @@ describe('landingStructuredData', () => {
 
   it('runs the event from the first door to the last', () => {
     expect(event.startDate).toBe(doorOpensAt(1).toISOString());
-    expect(event.endDate).toBe(doorOpensAt(DOOR_COUNT).toISOString());
+    expect(event.endDate).toBe(doorOpensAt(LAST_DOOR).toISOString());
   });
 });
 

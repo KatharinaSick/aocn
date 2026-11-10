@@ -23,17 +23,17 @@ export type DoorAnswer =
   /** The door may be open, but the API can't serve it right now: down, or its files unreadable. */
   | { state: 'unavailable' };
 
-/** Asks the API about a door, one of doorCount. An answer that makes no sense throws. */
+/** Asks the API about a door, if isDoor says there is one. An answer that makes no sense throws. */
 export async function fetchDoor(
   apiUrl: string,
   door: string,
-  doorCount: number,
+  isDoor: (door: number) => boolean,
   fetchFn: typeof fetch = fetch,
 ): Promise<DoorAnswer> {
   // Only plain door numbers reach the API, so nothing else can be smuggled into its path.
   // The API accepts the same spelling only: 1, never 01. A door that isn't in the schedule
   // is missing without asking, so it's a 404 even while the API is down, never "stuck".
-  if (!/^[1-9][0-9]?$/.test(door) || Number(door) > doorCount) {
+  if (!/^[1-9][0-9]?$/.test(door) || !isDoor(Number(door))) {
     return { state: 'missing' };
   }
   let response: Response;

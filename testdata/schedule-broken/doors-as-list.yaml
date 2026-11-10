@@ -1,0 +1,8 @@
+# error: doors: must map door numbers to dates
+# Rejected by the API and the website alike, with an error that contains the text above.
+# The format before doors had numbers: a list.
+doors:
+  - 2030-12-01T06:00:00+01:00
+christmasEve:
+  beforeSeason: 2029-12-24T06:00:00+01:00
+  finale: 2030-12-24T06:00:00+01:00

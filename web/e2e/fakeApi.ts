@@ -1,6 +1,6 @@
 // A stand-in for the API, for the accessibility tests of on-demand pages. It serves one
 // made-up open door: the real ones live in the private challenges repository, never here.
-// The text is long enough to wrap, and has every part a door page can show. Door 2 is open
+// The text is long enough to wrap, and has every part a door page can show. Door 3 is open
 // but can't be served, for the page that says to come back later.
 import { createServer } from 'node:http';
 
@@ -20,7 +20,7 @@ createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
   if (req.url === '/doors/1') {
     res.end(JSON.stringify(door));
-  } else if (req.url === '/doors/2') {
+  } else if (req.url === '/doors/3') {
     res.statusCode = 503;
     res.end('{"error":"this door can\'t be served right now, try again in a few minutes"}');
   } else if (req.url === '/health') {

@@ -11,22 +11,22 @@ import (
 func TestPreviewerGetsClosedDoors(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-30*24*time.Hour), uploaded)
 
-	rec := getAs(h, "/doors/2", previewerToken)
+	rec := getAs(h, "/doors/3", previewerToken)
 	var page pageResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || rec.Code != http.StatusOK {
 		t.Fatalf("page: status %d, %v", rec.Code, err)
 	}
-	if !page.Preview || page.Title != "Second" || !page.OpensAt.Equal(door2OpensAt) {
+	if !page.Preview || page.Title != "Second" || !page.OpensAt.Equal(door3OpensAt) {
 		t.Errorf("page: got %+v", page)
 	}
 
-	rec = getAs(h, "/doors/2/bundle", previewerToken)
+	rec = getAs(h, "/doors/3/bundle", previewerToken)
 	opensAt, err := time.Parse(time.RFC3339, rec.Header().Get(previewHeader))
-	if rec.Code != http.StatusOK || rec.Body.String() != "bundle 2" || err != nil || !opensAt.Equal(door2OpensAt) {
+	if rec.Code != http.StatusOK || rec.Body.String() != "bundle 3" || err != nil || !opensAt.Equal(door3OpensAt) {
 		t.Errorf("bundle: status %d, body %q, preview header %q", rec.Code, rec.Body.String(), rec.Header().Get(previewHeader))
 	}
 
-	rec = getAs(h, "/doors/2/checks", previewerToken)
+	rec = getAs(h, "/doors/3/checks", previewerToken)
 	var checks checksResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &checks); err != nil || rec.Code != http.StatusOK {
 		t.Fatalf("checks: status %d, %v", rec.Code, err)
@@ -40,13 +40,13 @@ func TestPreviewerGetsClosedDoors(t *testing.T) {
 func TestPreviewerOfOneDoorGetsOnlyThatDoor(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
 
-	for _, path := range []string{"/doors/2", "/doors/2/bundle", "/doors/2/checks"} {
-		if rec := getAs(h, path, door2PreviewerToken); rec.Code != http.StatusOK {
+	for _, path := range []string{"/doors/3", "/doors/3/bundle", "/doors/3/checks"} {
+		if rec := getAs(h, path, door3PreviewerToken); rec.Code != http.StatusOK {
 			t.Errorf("%s: status %d, want 200", path, rec.Code)
 		}
 	}
 	for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks"} {
-		rec := getAs(h, path, door2PreviewerToken)
+		rec := getAs(h, path, door3PreviewerToken)
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", path, rec.Code)
 		}

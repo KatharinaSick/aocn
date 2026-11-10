@@ -13,8 +13,18 @@ const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 export interface Doors {
-  /** How many doors there are: the length of the list in schedule.yaml. */
+  /** How many doors there are. */
   count: number;
+  /**
+   * The doors' numbers, in order. A door's number is its day in December: 1, 3, 5 … 23 for
+   * a door every other day. Loop over these, never over 1 to count.
+   */
+  numbers: number[];
+  /** The first door and the last, by number. */
+  first: number;
+  last: number;
+  /** Whether there is a door with this number. */
+  isDoor(door: number): boolean;
   /** When a door opens. */
   doorOpensAt(door: number): Date;
   /**
@@ -41,19 +51,19 @@ export interface Doors {
 }
 
 /** The rules above for any schedule. The site uses the real one, exported below. */
-export function doorsOf({ doors, christmasEve }: Schedule): Doors {
-  const count = doors.length;
+export function doorsOf({ doors: entries, christmasEve }: Schedule): Doors {
+  const count = entries.length;
+  const numbers = entries.map((e) => e.door);
+  const doors = entries.map((e) => e.opensAt);
   const firstDoorOpensAt = doors[0];
-
-  function assertDoorNumber(door: number): void {
-    if (!Number.isInteger(door) || door < 1 || door > count) {
-      throw new RangeError(`There is no door ${door}. Doors are numbered 1 to ${count}.`);
-    }
-  }
+  const opensAtByDoor = new Map(entries.map((e) => [e.door, e.opensAt]));
 
   function doorOpensAt(door: number): Date {
-    assertDoorNumber(door);
-    return new Date(doors[door - 1]);
+    const opensAt = opensAtByDoor.get(door);
+    if (opensAt === undefined) {
+      throw new RangeError(`There is no door ${door}. The doors are ${numbers.join(', ')}.`);
+    }
+    return new Date(opensAt);
   }
 
   /** Whole station days (06:00 CET to 06:00 CET) from `since` to `now`. */
@@ -63,13 +73,17 @@ export function doorsOf({ doors, christmasEve }: Schedule): Doors {
 
   return {
     count,
+    numbers,
+    first: numbers[0],
+    last: numbers[count - 1],
+    isDoor: (door) => opensAtByDoor.has(door),
     doorOpensAt,
     isDoorOpen(door, now) {
       return now.getTime() >= doorOpensAt(door).getTime();
     },
     nextDoor(now) {
-      const i = doors.findIndex((opensAt) => opensAt > now.getTime());
-      return i === -1 ? null : { door: i + 1, opensAt: new Date(doors[i]) };
+      const next = entries.find((e) => e.opensAt > now.getTime());
+      return next ? { door: next.door, opensAt: new Date(next.opensAt) } : null;
     },
     seasonPhase(now) {
       if (now.getTime() < firstDoorOpensAt) return 'before';
@@ -92,7 +106,11 @@ export function doorsOf({ doors, christmasEve }: Schedule): Doors {
 const season = doorsOf(schedule);
 
 export const DOOR_COUNT = season.count;
-export const { doorOpensAt, isDoorOpen, nextDoor, seasonPhase, incidentDays } = season;
+/** The doors' numbers, in order: their days in December. */
+export const DOOR_NUMBERS = season.numbers;
+export const FIRST_DOOR = season.first;
+export const LAST_DOOR = season.last;
+export const { isDoor, doorOpensAt, isDoorOpen, nextDoor, seasonPhase, incidentDays } = season;
 
 // CET without daylight saving time. (IANA's Etc/ zones have inverted signs: GMT-1 is UTC+1.)
 export const STATION_TIME_ZONE = 'Etc/GMT-1';

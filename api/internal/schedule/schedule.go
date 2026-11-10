@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -23,10 +24,15 @@ import (
 // The same pattern as on the website: seconds, no fractions, and Z or a ±HH:MM offset.
 var datePattern = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z|[+-](\d{2}):(\d{2}))$`)
 
-// file is schedule.yaml as written. Doors are nodes rather than strings because yaml.v3
-// silently drops a null item from a []string, which would move every later door up by one.
+// doorNumber is how a door's number is written: 1, 3, … 23, never 01, +1 or 1.0. A door's
+// number is its day in December, written out rather than worked out from its date, so a
+// rehearsal can move a date without renumbering the door.
+var doorNumber = regexp.MustCompile(`^[1-9][0-9]*$`)
+
+// file is schedule.yaml as written. Doors are a node rather than a map, so their order in
+// the file is kept and checked, and a null date is seen instead of dropped.
 type file struct {
-	Doors        []yaml.Node `yaml:"doors"`
+	Doors        yaml.Node `yaml:"doors"`
 	ChristmasEve struct {
 		BeforeSeason string `yaml:"beforeSeason"`
 		Finale       string `yaml:"finale"`
@@ -36,7 +42,8 @@ type file struct {
 // Schedule says when each door opens. Every method takes now instead of reading the
 // clock, so the schedule can be tested at any moment.
 type Schedule struct {
-	doors []time.Time
+	// doors in the order of the file: by number, each opening after the one before.
+	doors []door
 
 	// The moments POLARIS-7's incident counter on the website counts from. Nothing in
 	// the API uses them; they are read so a broken one is rejected here too.
@@ -75,28 +82,48 @@ func Parse(data []byte) (*Schedule, error) {
 		return nil, err
 	}
 
-	if len(f.Doors) == 0 {
-		return nil, errors.New("doors: must be a list with at least one date")
+	if f.Doors.Kind != yaml.MappingNode || len(f.Doors.Content) == 0 {
+		return nil, errors.New("doors: must map door numbers to dates, with at least one door")
 	}
 
-	s := &Schedule{doors: make([]time.Time, len(f.Doors))}
-	for i, node := range f.Doors {
-		label := fmt.Sprintf("door %d", i+1)
-		if node.Kind != yaml.ScalarNode {
+	s := &Schedule{}
+	for i := 0; i < len(f.Doors.Content); i += 2 {
+		key, value := f.Doors.Content[i], f.Doors.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Style != 0 || !doorNumber.MatchString(key.Value) {
+			return nil, fmt.Errorf(`doors: "%s" is not a door number, like 1 or 23`, key.Value)
+		}
+		number, err := strconv.Atoi(key.Value)
+		if err != nil {
+			return nil, fmt.Errorf(`doors: "%s" is not a door number, like 1 or 23`, key.Value)
+		}
+		label := fmt.Sprintf("door %d", number)
+		if len(s.doors) > 0 {
+			previous := s.doors[len(s.doors)-1]
+			if number == previous.number {
+				return nil, fmt.Errorf("%s: listed twice", label)
+			}
+			if number < previous.number {
+				return nil, fmt.Errorf("%s: listed after door %d; list the doors by number", label, previous.number)
+			}
+		}
+		if value.Kind != yaml.ScalarNode {
 			return nil, fmt.Errorf("%s: not a date", label)
 		}
-		text := node.Value
-		if node.Tag == "!!null" {
+		text := value.Value
+		if value.Tag == "!!null" {
 			text = ""
 		}
 		opensAt, err := parseDate(text, label)
 		if err != nil {
 			return nil, err
 		}
-		if i > 0 && !opensAt.After(s.doors[i-1]) {
-			return nil, fmt.Errorf("door %d: opens at %s, not after door %d", i+1, text, i)
+		if len(s.doors) > 0 {
+			previous := s.doors[len(s.doors)-1]
+			if !opensAt.After(previous.opensAt) {
+				return nil, fmt.Errorf("%s: opens at %s, not after door %d", label, text, previous.number)
+			}
 		}
-		s.doors[i] = opensAt
+		s.doors = append(s.doors, door{number: number, opensAt: opensAt})
 	}
 
 	var err error
@@ -137,17 +164,43 @@ func offsetInRange(match []string) bool {
 	return hours <= 23 && minutes <= 59
 }
 
-// Doors is how many doors there are: the length of the list in schedule.yaml.
+// door is one door: its number, which is its day in December, and when it opens.
+type door struct {
+	number  int
+	opensAt time.Time
+}
+
+// Doors is how many doors there are.
 func (s *Schedule) Doors() int {
 	return len(s.doors)
 }
 
-// OpensAt is when a door opens. Doors are numbered from 1.
-func (s *Schedule) OpensAt(door int) (time.Time, error) {
-	if door < 1 || door > len(s.doors) {
-		return time.Time{}, fmt.Errorf("there is no door %d; doors are numbered 1 to %d", door, len(s.doors))
+// Numbers are the doors' numbers, in order: 1, 3, 5, … for a door every other day.
+func (s *Schedule) Numbers() []int {
+	numbers := make([]int, len(s.doors))
+	for i, d := range s.doors {
+		numbers[i] = d.number
 	}
-	return s.doors[door-1], nil
+	return numbers
+}
+
+// OpensAt is when a door opens. A door's number is its day in December.
+func (s *Schedule) OpensAt(number int) (time.Time, error) {
+	for _, d := range s.doors {
+		if d.number == number {
+			return d.opensAt, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("there is no door %d; the doors are %s", number, s.list())
+}
+
+// list names the doors for an error: "1, 3, 5 … 23".
+func (s *Schedule) list() string {
+	numbers := s.Numbers()
+	if len(numbers) <= 3 {
+		return strings.Trim(fmt.Sprint(numbers), "[]")
+	}
+	return fmt.Sprintf("%d, %d, %d … %d", numbers[0], numbers[1], numbers[2], numbers[len(numbers)-1])
 }
 
 // IsOpen reports whether a door is open at now. This decides whether a door's content
@@ -162,9 +215,9 @@ func (s *Schedule) IsOpen(door int, now time.Time) (bool, error) {
 
 // Next is the next door to open after now and when. ok is false once every door is open.
 func (s *Schedule) Next(now time.Time) (door int, opensAt time.Time, ok bool) {
-	for i, t := range s.doors {
-		if t.After(now) {
-			return i + 1, t, true
+	for _, d := range s.doors {
+		if d.opensAt.After(now) {
+			return d.number, d.opensAt, true
 		}
 	}
 	return 0, time.Time{}, false

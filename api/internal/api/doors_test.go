@@ -20,12 +20,12 @@ import (
 
 var (
 	door1OpensAt = time.Date(2026, 12, 1, 5, 0, 0, 0, time.UTC)
-	door2OpensAt = time.Date(2026, 12, 3, 5, 0, 0, 0, time.UTC)
+	door3OpensAt = time.Date(2026, 12, 3, 5, 0, 0, 0, time.UTC)
 )
 
 const testSchedule = `doors:
-  - 2026-12-01T06:00:00+01:00
-  - 2026-12-03T06:00:00+01:00
+  1: 2026-12-01T06:00:00+01:00
+  3: 2026-12-03T06:00:00+01:00
 christmasEve:
   beforeSeason: 2025-12-24T06:00:00+01:00
   finale: 2026-12-24T06:00:00+01:00
@@ -57,25 +57,25 @@ var uploaded = memoryStorage{
 	"doors/01/page.yaml":     "title: First\nstory: The story.\n",
 	"doors/01/bundle.tar.gz": "bundle 1",
 	"doors/01/checks.yaml":   "- ready: [first-ns]\n- job: first-ns/cronjob/first-job\n",
-	"doors/02/page.yaml":     "title: Second\nstory: Secret.\n",
-	"doors/02/bundle.tar.gz": "bundle 2",
-	"doors/02/checks.yaml":   "- ready: [secret-ns]\n- job: secret-ns/cronjob/secret-job\n",
+	"doors/03/page.yaml":     "title: Second\nstory: Secret.\n",
+	"doors/03/bundle.tar.gz": "bundle 3",
+	"doors/03/checks.yaml":   "- ready: [secret-ns]\n- job: secret-ns/cronjob/secret-job\n",
 }
 
 // Everything a closed door must never give away, from uploaded.
 var secrets = []string{"First", "The story", "Second", "Secret", "bundle", "first-ns", "secret-ns"}
 
-// Tokens the fake GitHub knows. The previewer gets every door early, the door 2 previewer
-// only door 2, the player none.
+// Tokens the fake GitHub knows. The previewer gets every door early, the door 3 previewer
+// only door 3, the player none.
 const (
 	previewerToken      = "previewer-token"
-	door2PreviewerToken = "door2-previewer-token"
+	door3PreviewerToken = "door3-previewer-token"
 	playerToken         = "player-token"
 )
 
 var (
 	previewer      = github.User{ID: 7, Login: "previewer", AvatarURL: "https://example.com/7.png"}
-	door2Previewer = github.User{ID: 9, Login: "door2-previewer", AvatarURL: "https://example.com/9.png"}
+	door3Previewer = github.User{ID: 9, Login: "door3-previewer", AvatarURL: "https://example.com/9.png"}
 	player         = github.User{ID: 8, Login: "player", AvatarURL: "https://example.com/8.png"}
 )
 
@@ -92,8 +92,8 @@ func (f *fakeUsers) User(_ context.Context, token string) (github.User, error) {
 		return github.User{}, errors.New("GitHub is down")
 	case token == previewerToken:
 		return previewer, nil
-	case token == door2PreviewerToken:
-		return door2Previewer, nil
+	case token == door3PreviewerToken:
+		return door3Previewer, nil
 	case token == playerToken:
 		return player, nil
 	}
@@ -140,7 +140,7 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 		Users:    a.users,
 		Previewers: app.Previewers{
 			previewer.ID:      {All: true},
-			door2Previewer.ID: {Doors: map[int]bool{2: true}},
+			door3Previewer.ID: {Doors: map[int]bool{3: true}},
 		},
 		Results: a.results,
 		Now:     func() time.Time { return now },
@@ -202,17 +202,17 @@ func TestClosedDoorsServeNothing(t *testing.T) {
 }
 
 // Every endpoint that hands out a door's content, for both doors.
-var closedPaths = []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/2", "/doors/2/bundle", "/doors/2/checks"}
+var closedPaths = []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/3", "/doors/3/bundle", "/doors/3/checks"}
 
 func TestClosedDoorSaysWhenItOpens(t *testing.T) {
-	for _, path := range []string{"/doors/2", "/doors/2/bundle", "/doors/2/checks"} {
+	for _, path := range []string{"/doors/3", "/doors/3/bundle", "/doors/3/checks"} {
 		rec := get(doorsAt(t, door1OpensAt, uploaded), path)
 		var body closedResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
-		if body.Door != 2 || !body.OpensAt.Equal(door2OpensAt) {
-			t.Errorf("%s: got %+v, want door 2 opening at %v", path, body, door2OpensAt)
+		if body.Door != 3 || !body.OpensAt.Equal(door3OpensAt) {
+			t.Errorf("%s: got %+v, want door 3 opening at %v", path, body, door3OpensAt)
 		}
 	}
 }
@@ -263,14 +263,15 @@ func TestOnlyOpenDoorsAreServed(t *testing.T) {
 	if rec := get(h, "/doors/1"); rec.Code != http.StatusOK {
 		t.Errorf("door 1: status %d", rec.Code)
 	}
-	if rec := get(h, "/doors/2"); rec.Code != http.StatusNotFound {
-		t.Errorf("door 2: status %d", rec.Code)
+	if rec := get(h, "/doors/3"); rec.Code != http.StatusNotFound {
+		t.Errorf("door 3: status %d", rec.Code)
 	}
 }
 
 func TestUnknownDoors(t *testing.T) {
-	h := doorsAt(t, door2OpensAt.Add(time.Hour), uploaded)
-	for _, path := range []string{"/doors/0", "/doors/3", "/doors/-1", "/doors/one", "/doors/01x", "/doors/3/bundle", "/doors/3/checks",
+	h := doorsAt(t, door3OpensAt.Add(time.Hour), uploaded)
+	for _, path := range []string{"/doors/0", "/doors/2", "/doors/4", "/doors/-1", "/doors/one", "/doors/01x", "/doors/2/bundle", "/doors/2/checks",
+		// 2 and 4 are days without a door.
 		// One spelling per door: these all parse as 1, which is open.
 		"/doors/01", "/doors/+1", "/doors/1.0", "/doors/%201", "/doors/01/bundle", "/doors/+1/bundle", "/doors/01/checks"} {
 		rec := get(h, path)

@@ -123,11 +123,11 @@ func TestVerifyClosedDoor(t *testing.T) {
 	}
 
 	// Previewers of another door are players here.
-	if rec := verifyAs(h, "1", door2PreviewerToken, sent); rec.Code != http.StatusNotFound {
-		t.Errorf("door 2 previewer: status %d, want 404", rec.Code)
+	if rec := verifyAs(h, "1", door3PreviewerToken, sent); rec.Code != http.StatusNotFound {
+		t.Errorf("door 3 previewer: status %d, want 404", rec.Code)
 	}
 	if len(h.results.recorded) != 0 {
-		t.Fatalf("recorded a door 2 previewer's result for door 1")
+		t.Fatalf("recorded a door 3 previewer's result for door 1")
 	}
 
 	if rec := verifyAs(h, "1", previewerToken, sent); rec.Code != http.StatusOK {

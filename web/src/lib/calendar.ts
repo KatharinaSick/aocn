@@ -7,7 +7,7 @@
  * UIDs are stable, so a subscribed calendar, or a second import, updates an event instead
  * of duplicating it.
  */
-import { DOOR_COUNT, doorOpensAt } from './doors';
+import { DOOR_NUMBERS, doorOpensAt } from './doors';
 
 const CALENDAR_NAME = 'Advent of Cloud Native';
 const EVENT_DURATION = 30 * 60 * 1000;
@@ -69,7 +69,7 @@ export function buildCalendar(siteUrl: URL, generatedAt: Date): string {
     'X-PUBLISHED-TTL:P1D',
   ];
 
-  for (let door = 1; door <= DOOR_COUNT; door++) {
+  for (const door of DOOR_NUMBERS) {
     const opensAt = doorOpensAt(door);
     const number = String(door).padStart(2, '0');
     lines.push(

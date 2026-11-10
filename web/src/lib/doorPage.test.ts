@@ -48,13 +48,16 @@ describe('readDoorAnswer', () => {
   });
 });
 
+/** Doors every other day, like the real season. */
+const isDoor = (door: number) => door % 2 === 1 && door <= 23;
+
 describe('fetchDoor', () => {
   const answering = (status: number, body: unknown) =>
     vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 
   it('asks the API for the door', async () => {
     const fetchFn = answering(200, openBody);
-    expect((await fetchDoor('http://api', '1', 12, fetchFn)).state).toBe('open');
+    expect((await fetchDoor('http://api', '1', isDoor, fetchFn)).state).toBe('open');
     expect(fetchFn).toHaveBeenCalledWith('http://api/doors/1', expect.anything());
   });
 
@@ -62,12 +65,13 @@ describe('fetchDoor', () => {
     const fetchFn = vi.fn(async () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
-    expect(await fetchDoor('http://api', '1', 12, fetchFn)).toEqual({ state: 'unavailable' });
+    expect(await fetchDoor('http://api', '1', isDoor, fetchFn)).toEqual({ state: 'unavailable' });
   });
 
-  it.each(['0', '01', '+1', '1x', '../health', '-1', '100', '', '13', '50'])('never asks the API about %j', async (door) => {
+  // 2 is a day without a door, 25 is after the last.
+  it.each(['0', '01', '+1', '1x', '../health', '-1', '100', '', '2', '25', '50'])('never asks the API about %j', async (door) => {
     const fetchFn = answering(200, openBody);
-    expect(await fetchDoor('http://api', door, 12, fetchFn)).toEqual({ state: 'missing' });
+    expect(await fetchDoor('http://api', door, isDoor, fetchFn)).toEqual({ state: 'missing' });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });

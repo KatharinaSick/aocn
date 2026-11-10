@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -34,17 +35,17 @@ func utc(t *testing.T, s string) time.Time {
 func TestFixtureOpeningTimes(t *testing.T) {
 	s := load(t, "testdata/schedule.yaml")
 
-	want := []string{"2030-12-01T05:00:00Z", "2030-12-03T05:00:00Z", "2030-12-05T00:30:00Z"}
-	if s.Doors() != len(want) {
-		t.Fatalf("Doors() = %d, want %d", s.Doors(), len(want))
+	want := map[int]string{1: "2030-12-01T05:00:00Z", 3: "2030-12-03T05:00:00Z", 5: "2030-12-05T00:30:00Z"}
+	if got := s.Numbers(); !slices.Equal(got, []int{1, 3, 5}) {
+		t.Fatalf("Numbers() = %v, want [1 3 5]", got)
 	}
-	for i, w := range want {
-		opensAt, err := s.OpensAt(i + 1)
+	for door, w := range want {
+		opensAt, err := s.OpensAt(door)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !opensAt.Equal(utc(t, w)) {
-			t.Errorf("door %d opens at %s, want %s", i+1, opensAt.UTC().Format(time.RFC3339), w)
+			t.Errorf("door %d opens at %s, want %s", door, opensAt.UTC().Format(time.RFC3339), w)
 		}
 	}
 
@@ -71,8 +72,8 @@ func TestFixtureDoorOneOpensOnTheSecond(t *testing.T) {
 	if open, _ := s.IsOpen(1, opensAt); !open {
 		t.Error("door 1 closed at the moment it opens")
 	}
-	if door, _, ok := s.Next(opensAt); !ok || door != 2 {
-		t.Errorf("Next when door 1 opens = %d, %v, want door 2", door, ok)
+	if door, _, ok := s.Next(opensAt); !ok || door != 3 {
+		t.Errorf("Next when door 1 opens = %d, %v, want door 3", door, ok)
 	}
 }
 
@@ -80,7 +81,7 @@ func TestFixtureAfterTheLastDoor(t *testing.T) {
 	s := load(t, "testdata/schedule.yaml")
 	now := utc(t, "2030-12-05T00:30:00Z")
 
-	for door := 1; door <= s.Doors(); door++ {
+	for _, door := range s.Numbers() {
 		if open, _ := s.IsOpen(door, now); !open {
 			t.Errorf("door %d closed after the last door opened", door)
 		}
@@ -92,7 +93,8 @@ func TestFixtureAfterTheLastDoor(t *testing.T) {
 
 func TestNoSuchDoor(t *testing.T) {
 	s := load(t, "testdata/schedule.yaml")
-	for _, door := range []int{0, -1, 4} {
+	// 2 and 4 are days without a door.
+	for _, door := range []int{0, -1, 2, 4, 6} {
 		if _, err := s.OpensAt(door); err == nil {
 			t.Errorf("OpensAt(%d) accepted", door)
 		}
@@ -110,18 +112,23 @@ func TestRealSchedule(t *testing.T) {
 	if s.Doors() != 12 {
 		t.Errorf("%d doors, want 12", s.Doors())
 	}
-	for i, opensAt := range s.doors {
-		if i > 0 && !opensAt.After(s.doors[i-1]) {
-			t.Errorf("door %d does not open after door %d", i+1, i)
+	cet := time.FixedZone("CET", 60*60)
+	for i, d := range s.doors {
+		if i > 0 && !d.opensAt.After(s.doors[i-1].opensAt) {
+			t.Errorf("door %d does not open after door %d", d.number, s.doors[i-1].number)
 		}
-		if !opensAt.Truncate(time.Minute).Equal(opensAt) {
-			t.Errorf("door %d does not open on the minute", i+1)
+		if !d.opensAt.Truncate(time.Minute).Equal(d.opensAt) {
+			t.Errorf("door %d does not open on the minute", d.number)
+		}
+		// Only for the real schedule: a rehearsal may move a date without renumbering.
+		if day := d.opensAt.In(cet); day.Month() != time.December || day.Day() != d.number {
+			t.Errorf("door %d opens on %s, not on Dec %d", d.number, day.Format("Jan 2"), d.number)
 		}
 	}
-	if !s.christmasEveBeforeSeason.Before(s.doors[0]) {
+	if !s.christmasEveBeforeSeason.Before(s.doors[0].opensAt) {
 		t.Error("christmasEve.beforeSeason is not before door 1")
 	}
-	if !s.christmasEveFinale.After(s.doors[len(s.doors)-1]) {
+	if !s.christmasEveFinale.After(s.doors[len(s.doors)-1].opensAt) {
 		t.Error("christmasEve.finale is not after the last door")
 	}
 }
@@ -154,8 +161,8 @@ func TestValidSchedules(t *testing.T) {
 				t.Fatalf("%d doors, want %d", s.Doors(), len(want))
 			}
 			for i, w := range want {
-				if !s.doors[i].Equal(utc(t, w)) {
-					t.Errorf("door %d opens at %s, want %s", i+1, s.doors[i].UTC().Format(time.RFC3339), w)
+				if !s.doors[i].opensAt.Equal(utc(t, w)) {
+					t.Errorf("door %d opens at %s, want %s", s.doors[i].number, s.doors[i].opensAt.UTC().Format(time.RFC3339), w)
 				}
 			}
 		})

@@ -8,10 +8,10 @@
 import { Font } from 'astro:assets';
 import PolaFace from '../components/PolaFace.astro';
 import Sky from '../components/Sky.astro';
-import { DOOR_COUNT, doorOpensAt, formatStationDay } from '../lib/doors';
+import { DOOR_COUNT, FIRST_DOOR, LAST_DOOR, doorOpensAt, formatStationDay } from '../lib/doors';
 import '../styles/base.css';
 
-const schedule = `${DOOR_COUNT} doors · ${formatStationDay(doorOpensAt(1))} -> ${formatStationDay(doorOpensAt(DOOR_COUNT))} · aocn.dev`;
+const schedule = `${DOOR_COUNT} doors · ${formatStationDay(doorOpensAt(FIRST_DOOR))} -> ${formatStationDay(doorOpensAt(LAST_DOOR))} · aocn.dev`;
 ---
 
 <!doctype html>

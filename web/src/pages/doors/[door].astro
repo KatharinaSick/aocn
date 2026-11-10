@@ -15,11 +15,11 @@
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
-import { DOOR_COUNT } from '../../lib/doors';
+import { isDoor } from '../../lib/doors';
 
 export const prerender = false;
 
-const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '', DOOR_COUNT);
+const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '', isDoor);
 const cacheHeaders = doorCacheHeaders(answer, new Date());
 if (answer.state === 'closed' || answer.state === 'missing') {
   // An empty 404 makes Astro answer with the prerendered 404 page.

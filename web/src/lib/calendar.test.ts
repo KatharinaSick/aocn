@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCalendar, doorEventUid, foldLine } from './calendar';
-import { DOOR_COUNT, doorOpensAt } from './doors';
+import { DOOR_COUNT, DOOR_NUMBERS, doorOpensAt } from './doors';
 
 const site = new URL('https://aocn.dev/');
 const generatedAt = new Date('2026-10-01T12:00:00.000Z');
@@ -20,7 +20,7 @@ describe('buildCalendar', () => {
 
   it('starts every event at the exact moment its door opens, and ends it 30 minutes later', () => {
     events.forEach((event, i) => {
-      const opensAt = doorOpensAt(i + 1).toISOString().replace(/[-:]/g, '').replace('.000', '');
+      const opensAt = doorOpensAt(DOOR_NUMBERS[i]).toISOString().replace(/[-:]/g, '').replace('.000', '');
       expect(field(event, 'DTSTART')).toBe(opensAt);
     });
     const endsAt = new Date(doorOpensAt(1).getTime() + 30 * 60 * 1000);
@@ -29,7 +29,7 @@ describe('buildCalendar', () => {
 
   it('gives every door a stable UID, so subscribed calendars update instead of duplicating', () => {
     expect(events.map((event) => field(event, 'UID'))).toEqual(
-      Array.from({ length: DOOR_COUNT }, (_, i) => doorEventUid(i + 1)),
+      DOOR_NUMBERS.map((door) => doorEventUid(door)),
     );
     expect(buildCalendar(site, new Date('2026-11-15T00:00:00Z'))).toContain('UID:door-01@aocn.dev');
   });
