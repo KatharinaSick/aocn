@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -64,15 +65,16 @@ func (f *fakeUserStore) Get(_ context.Context, id int64) (users.User, error) {
 
 type authAPI struct {
 	http.Handler
-	store *fakeUserStore
+	store  *fakeUserStore
+	github *fakeGitHub
 }
 
 func authAt(t *testing.T, oauth OAuthApp) authAPI {
 	t.Helper()
-	a := authAPI{store: &fakeUserStore{saved: map[int64]users.User{}}}
+	a := authAPI{store: &fakeUserStore{saved: map[int64]users.User{}}, github: &fakeGitHub{}}
 	a.Handler = NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{
 		OAuth:      oauth,
-		Users:      &fakeGitHub{},
+		Users:      a.github,
 		Store:      a.store,
 		SessionKey: sessionKey,
 		SiteURL:    "https://aocn.dev",
@@ -328,5 +330,64 @@ func TestCLILoginFailures(t *testing.T) {
 	down.store.down = true
 	if rec := postAs(down, "/auth/cli", "Bearer "+githubPlayerToken); rec.Code != http.StatusInternalServerError {
 		t.Errorf("database down: status %d", rec.Code)
+	}
+}
+
+// postFrom is postAs from an IP, as Netlify reports it.
+func postFrom(h http.Handler, path, authorization, ip string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, nil)
+	req.Header.Set("Authorization", authorization)
+	req.Header.Set("X-Forwarded-For", ip)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// Every CLI login asks GitHub, even with a made-up token, so one address gets only so many.
+func TestCLILoginLimitsRequestsPerIP(t *testing.T) {
+	a := authAt(t, fakeOAuth{})
+	for i := range loginIPLimit {
+		if rec := postFrom(a, "/auth/cli", "Bearer made-up", "203.0.113.1"); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("request %d: status %d, want 401", i+1, rec.Code)
+		}
+	}
+	rec := postFrom(a, "/auth/cli", "Bearer "+githubPlayerToken, "203.0.113.1")
+	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
+		t.Errorf("past the limit: status %d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	if a.github.asked != loginIPLimit {
+		t.Errorf("asked GitHub %d times, want %d", a.github.asked, loginIPLimit)
+	}
+	if rec := postFrom(a, "/auth/cli", "Bearer "+githubPlayerToken, "203.0.113.2"); rec.Code != http.StatusOK {
+		t.Errorf("another address: status %d, want 200", rec.Code)
+	}
+}
+
+// A caller going around Netlify can make up a new IP for every request, so logins are also
+// limited all together, the website's and the CLI's counted as one.
+func TestLoginsAreLimitedAllTogether(t *testing.T) {
+	a := authAt(t, fakeOAuth{})
+	for i := range githubCallLimit - 1 {
+		ip := fmt.Sprintf("198.51.%d.%d", i/256, i%256)
+		if rec := postFrom(a, "/auth/cli", "Bearer made-up", ip); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("request %d: status %d, want 401", i+1, rec.Code)
+		}
+	}
+	// The last one allowed is a website login.
+	state, cookies := login(t, a, "/")
+	if rec := request(a, http.MethodGet, "/auth/github/callback?code=good&state="+state, cookies...); rec.Code != http.StatusSeeOther {
+		t.Fatalf("website login: status %d", rec.Code)
+	}
+
+	rec := postFrom(a, "/auth/cli", "Bearer "+githubPlayerToken, "192.0.2.200")
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("CLI past the limit: status %d, want 429", rec.Code)
+	}
+	state, cookies = login(t, a, "/")
+	if rec := request(a, http.MethodGet, "/auth/github/callback?code=good&state="+state, cookies...); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("website past the limit: status %d, want 429", rec.Code)
+	}
+	if a.github.asked != githubCallLimit {
+		t.Errorf("asked GitHub %d times, want %d", a.github.asked, githubCallLimit)
 	}
 }

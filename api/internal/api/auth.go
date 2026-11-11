@@ -34,7 +34,23 @@ const (
 	returnCookie = "aocn_login_return"
 	// loginTakesAtMost is how long the state and return cookies last.
 	loginTakesAtMost = 10 * time.Minute
+
+	// Logins finished per IP: enough for a workshop behind one address, not for a script.
+	loginIPLimit  = 30
+	loginIPWindow = 10 * time.Minute
+	// Logins finished by everyone together, per instance: far more than real people do, and
+	// few enough that GitHub never sees a flood from us.
+	githubCallLimit  = 120
+	githubCallWindow = time.Minute
 )
+
+// tooManyLogins answers a client past a login limit. JSON, which aocn login reads; the
+// browser shows it as it is, which is rare enough.
+func tooManyLogins(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "60")
+	writeJSONError(w, http.StatusTooManyRequests, "too many logins right now, try again in a few minutes")
+}
 
 // OAuthApp is the GitHub OAuth app. *github.OAuth talks to github.com.
 type OAuthApp interface {

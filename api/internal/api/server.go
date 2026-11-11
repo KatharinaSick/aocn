@@ -32,10 +32,10 @@ func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors, auth A
 
 func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, doors Doors, auth Auth, profiles Profiles) {
 	mux.Handle("GET /health", handleHealth())
-	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow)(handleSubscribe(log, subscriptions)))
+	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow, tooManySignups)(handleSubscribe(log, subscriptions)))
 	// Confirming is limited too: a valid token can be replayed until it expires, and
 	// every replay costs a database row and two Resend calls.
-	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow)(handleConfirmSubscription(log, subscriptions)))
+	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow, tooManySignups)(handleConfirmSubscription(log, subscriptions)))
 	// Neither door endpoint is limited. The page is asked for by the website, from Netlify's
 	// few addresses. Bundles are small, and many players may share an address (a workshop,
 	// Codespaces), all opening the door at 06:00; a limit by IP would turn them away first.
@@ -46,12 +46,17 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	// be verified more than a few times a minute, so a limit per user is the first thing to
 	// add if anyone floods it.
 	mux.Handle("POST /doors/{door}/verify", handleVerify(log, doors))
-	// Logging in isn't limited: a code from GitHub can't be made up, and a workshop logging
-	// in together shares one address.
+	// Finishing a login asks GitHub, whatever the request carries: a made-up code or token
+	// still costs a call, and enough bad ones from our address could get it blocked there,
+	// turning everyone's login away. So both are limited per IP, generously, since a workshop
+	// logs in together from one address, and all together, since a caller going around
+	// Netlify can make up any IP. Starting a login and logging out ask nobody.
+	githubCalls := limitAll(githubCallLimit, githubCallWindow, tooManyLogins)
+	byIP := limitByIP(loginIPLimit, loginIPWindow, tooManyLogins)
 	mux.Handle("GET /auth/github/login", handleLogin(auth))
-	mux.Handle("GET /auth/github/callback", handleCallback(log, auth))
+	mux.Handle("GET /auth/github/callback", byIP(githubCalls(handleCallback(log, auth))))
 	mux.Handle("POST /auth/logout", handleLogout(auth))
-	mux.Handle("POST /auth/cli", handleCLILogin(log, auth))
+	mux.Handle("POST /auth/cli", byIP(githubCalls(handleCLILogin(log, auth))))
 	mux.Handle("GET /me", handleMe(log, auth))
 	// Asked by the website's function, from Netlify's few addresses, so not limited by IP.
 	mux.Handle("GET /users/{login}", handleProfile(log, profiles))
