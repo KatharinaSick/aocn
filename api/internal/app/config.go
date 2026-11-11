@@ -107,6 +107,10 @@ func ParseConfig() (*Config, error) {
 	return cfg, nil
 }
 
+// minSessionKeyBytes is the shortest session signing key accepted: 256 bits of key for
+// HS256, as openssl rand -base64 32 gives (44 characters).
+const minSessionKeyBytes = 32
+
 func (c *Config) validate(onCloudRun bool) error {
 	// No stand-in for the database, not even in dev mode: `devbox run api` points at the
 	// local one.
@@ -121,6 +125,12 @@ func (c *Config) validate(onCloudRun bool) error {
 		return errors.New("doors.bucket or doors.dir is required")
 	case c.Doors.Dir != "" && onCloudRun:
 		return errors.New("doors.dir must not be set on Cloud Run, use doors.bucket")
+	}
+
+	// The session key is all that stands between anyone with a token of their own and a
+	// forged one for a previewer: HS256 with a short key can be guessed offline from a token.
+	if k := c.Session.SigningKey; k != "" && len(k) < minSessionKeyBytes {
+		return fmt.Errorf("session.signingKey must be at least %d characters, like openssl rand -base64 32", minSessionKeyBytes)
 	}
 
 	if c.Dev {

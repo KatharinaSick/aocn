@@ -11,7 +11,7 @@ func fullConfig() Config {
 	c.Doors.Bucket = "doors"
 	c.GitHub.ClientID = "Ov23test"
 	c.GitHub.ClientSecret = "secret"
-	c.Session.SigningKey = "key"
+	c.Session.SigningKey = "0123456789abcdef0123456789abcdef"
 	return c
 }
 
@@ -19,14 +19,15 @@ func fullConfig() Config {
 // would accept signups that never send an email.
 func TestValidateRequiresSecretsOutsideDevMode(t *testing.T) {
 	cases := map[string]func(*Config){
-		"no api key":     func(c *Config) { c.Resend.APIKey = "" },
-		"no segment":     func(c *Config) { c.Resend.SegmentID = "" },
-		"no signing key": func(c *Config) { c.Subscribe.SigningKey = "" },
-		"no database":    func(c *Config) { c.Database.URL = "" },
-		"no doors":       func(c *Config) { c.Doors.Bucket = "" },
-		"no client ID":   func(c *Config) { c.GitHub.ClientID = "" },
-		"no secret":      func(c *Config) { c.GitHub.ClientSecret = "" },
-		"no session key": func(c *Config) { c.Session.SigningKey = "" },
+		"no api key":        func(c *Config) { c.Resend.APIKey = "" },
+		"no segment":        func(c *Config) { c.Resend.SegmentID = "" },
+		"no signing key":    func(c *Config) { c.Subscribe.SigningKey = "" },
+		"no database":       func(c *Config) { c.Database.URL = "" },
+		"no doors":          func(c *Config) { c.Doors.Bucket = "" },
+		"no client ID":      func(c *Config) { c.GitHub.ClientID = "" },
+		"no secret":         func(c *Config) { c.GitHub.ClientSecret = "" },
+		"no session key":    func(c *Config) { c.Session.SigningKey = "" },
+		"short session key": func(c *Config) { c.Session.SigningKey = "0123456789abcdef0123456789abcde" },
 	}
 	for name, change := range cases {
 		for _, onCloudRun := range []bool{true, false} {
