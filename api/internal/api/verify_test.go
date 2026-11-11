@@ -208,3 +208,24 @@ func TestMatchResultsKeepsTheChecksOrderAndShortensAnswers(t *testing.T) {
 		t.Errorf("got kept %d runes, want %d", len(got), maxGotRunes)
 	}
 }
+
+// Saving a result looks the player up, for the login to save it under. A token for someone
+// the database doesn't know (deleted, or another environment's key) means signing in again.
+func TestVerifyNeedsTheAccount(t *testing.T) {
+	now := door1OpensAt.Add(time.Hour)
+	checks := door1Checks(t)
+
+	h := doorsAt(t, now, uploaded)
+	h.accounts.down = true
+	if rec := verifyAs(h, "1", playerToken, resultsFor(checks, true)); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("database down: status %d, want 503", rec.Code)
+	}
+
+	h = doorsAt(t, now, uploaded)
+	if rec := verifyAs(h, "1", cliToken(404), resultsFor(checks, true)); rec.Code != http.StatusUnauthorized {
+		t.Errorf("unknown account: status %d, want 401", rec.Code)
+	}
+	if len(h.results.recorded) != 0 {
+		t.Errorf("recorded %d runs", len(h.results.recorded))
+	}
+}

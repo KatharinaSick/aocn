@@ -24,8 +24,8 @@ type User struct {
 // ErrBadToken means GitHub doesn't accept the token: revoked, expired or made up.
 var ErrBadToken = errors.New("GitHub doesn't accept this token")
 
-// cacheFor is how long a token's user is kept. A revoked token keeps working this long, and
-// a player who runs aocn verify again and again asks GitHub once.
+// cacheFor is how long a token's user is kept. Only logging in asks, once per login, so this
+// mostly saves asking twice when a login is retried; a revoked token keeps working this long.
 const cacheFor = 5 * time.Minute
 
 // maxCached bounds the cache. Past it, expired entries are dropped, and if that isn't

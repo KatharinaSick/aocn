@@ -34,20 +34,20 @@ private, only your public profile.`,
 				return err
 			}
 			fmt.Fprintf(out, "Open %s and enter this code: %s\n\nWaiting for GitHub…\n", code.VerificationURI, code.UserCode)
-			token, err := auth.WaitForToken(cmd.Context(), code)
+			githubToken, err := auth.WaitForToken(cmd.Context(), code)
 			if err != nil {
 				return err
 			}
-			if err := auth.SaveToken(token); err != nil {
+			// The GitHub token is handed to the API once and then forgotten; aocn keeps the
+			// API's own token.
+			session, err := api.SignIn(cmd.Context(), githubToken)
+			if err != nil {
+				return err
+			}
+			if err := auth.SaveToken(session.Token); err != nil {
 				return fmt.Errorf("saving your sign-in: %w", err)
 			}
-			login, err := auth.Login(cmd.Context(), token)
-			if err != nil {
-				// Signed in all the same; only the name is missing.
-				fmt.Fprintln(out, "Signed in.")
-				return nil
-			}
-			fmt.Fprintf(out, "Signed in as %s.\n", login)
+			fmt.Fprintf(out, "Signed in as %s.\n", session.Login)
 			return nil
 		},
 	}

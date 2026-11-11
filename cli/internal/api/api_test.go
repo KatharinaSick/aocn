@@ -199,3 +199,29 @@ func TestSendResults(t *testing.T) {
 		t.Errorf("sent %s, want %s", f.body, want)
 	}
 }
+
+// Signing in hands the GitHub token to the API once and returns the API's own.
+func TestSignIn(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method != http.MethodPost || r.URL.Path != "/auth/cli":
+			http.NotFound(w, r)
+		case r.Header.Get("Authorization") != "Bearer gho_good":
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"GitHub doesn't accept this sign-in. Run aocn login again"}`))
+		default:
+			_, _ = w.Write([]byte(`{"token":"api-token","login":"octo"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("AOCN_API_URL", srv.URL)
+	signedOut(t)
+
+	s, err := SignIn(context.Background(), "gho_good")
+	if err != nil || s != (Session{Token: "api-token", Login: "octo"}) {
+		t.Fatalf("got %+v, %v", s, err)
+	}
+	if _, err := SignIn(context.Background(), "gho_bad"); err == nil || !strings.Contains(err.Error(), "Run aocn login again") {
+		t.Errorf("bad token: %v", err)
+	}
+}

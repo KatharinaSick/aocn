@@ -51,6 +51,7 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	mux.Handle("GET /auth/github/login", handleLogin(auth))
 	mux.Handle("GET /auth/github/callback", handleCallback(log, auth))
 	mux.Handle("POST /auth/logout", handleLogout(auth))
+	mux.Handle("POST /auth/cli", handleCLILogin(log, auth))
 	mux.Handle("GET /me", handleMe(log, auth))
 	// Asked by the website's function, from Netlify's few addresses, so not limited by IP.
 	mux.Handle("GET /users/{login}", handleProfile(log, profiles))

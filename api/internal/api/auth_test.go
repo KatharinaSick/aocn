@@ -34,7 +34,7 @@ func (f fakeOAuth) Exchange(_ context.Context, code, _ string) (string, error) {
 	case code != "good":
 		return "", github.ErrBadCode
 	}
-	return playerToken, nil
+	return githubPlayerToken, nil
 }
 
 // fakeUserStore keeps users in memory.
@@ -72,7 +72,7 @@ func authAt(t *testing.T, oauth OAuthApp) authAPI {
 	a := authAPI{store: &fakeUserStore{saved: map[int64]users.User{}}}
 	a.Handler = NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{
 		OAuth:      oauth,
-		Users:      &fakeUsers{},
+		Users:      &fakeGitHub{},
 		Store:      a.store,
 		SessionKey: sessionKey,
 		SiteURL:    "https://aocn.dev",
@@ -132,10 +132,10 @@ func TestLoginSetsTheSessionAndGoesBack(t *testing.T) {
 		t.Fatalf("callback: status %d, to %q: %s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
 	}
 	c := cookieNamed(rec, sessionCookie)
-	if c == nil || !c.HttpOnly || !c.Secure || c.MaxAge != int(session.LastsFor.Seconds()) {
+	if c == nil || !c.HttpOnly || !c.Secure || c.MaxAge != int(session.Website.LastsFor.Seconds()) {
 		t.Fatalf("session cookie: %+v", c)
 	}
-	if id, err := session.Verify(sessionKey, c.Value, loginNow); err != nil || id != player.ID {
+	if id, err := session.Verify(sessionKey, c.Value, loginNow, session.Website); err != nil || id != player.ID {
 		t.Errorf("session: %d, %v", id, err)
 	}
 	if got := a.store.saved[player.ID]; got.Login != player.Login {
@@ -234,7 +234,7 @@ func TestSafeReturn(t *testing.T) {
 func TestMe(t *testing.T) {
 	a := authAt(t, fakeOAuth{})
 	a.store.saved[player.ID] = users.User{GitHubID: player.ID, Login: "player", AvatarURL: "https://example.com/8.png"}
-	signed, _ := session.Sign(sessionKey, player.ID, loginNow)
+	signed, _ := session.Sign(sessionKey, player.ID, loginNow, session.Website)
 
 	rec := request(a, http.MethodGet, "/me", &http.Cookie{Name: sessionCookie, Value: signed})
 	var body meResponse
@@ -248,8 +248,8 @@ func TestMe(t *testing.T) {
 
 func TestMeWhenNotLoggedIn(t *testing.T) {
 	a := authAt(t, fakeOAuth{})
-	other, _ := session.Sign([]byte("another key, another key, another"), player.ID, loginNow)
-	unknown, _ := session.Sign(sessionKey, 404, loginNow)
+	other, _ := session.Sign([]byte("another key, another key, another"), player.ID, loginNow, session.Website)
+	unknown, _ := session.Sign(sessionKey, 404, loginNow, session.Website)
 
 	for name, cookies := range map[string][]*http.Cookie{
 		"no cookie":    nil,
@@ -271,5 +271,62 @@ func TestLogout(t *testing.T) {
 	rec := request(a, http.MethodPost, "/auth/logout")
 	if c := cookieNamed(rec, sessionCookie); rec.Code != http.StatusNoContent || c == nil || c.MaxAge >= 0 {
 		t.Fatalf("status %d, cookie %+v", rec.Code, c)
+	}
+}
+
+// postAs sends a POST with this Authorization header (none if empty).
+func postAs(h http.Handler, path, authorization string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, nil)
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// aocn login hands over the device flow's GitHub token once and gets this API's own token,
+// which the door endpoints then take without asking GitHub.
+func TestCLILoginSwapsTheGitHubToken(t *testing.T) {
+	a := authAt(t, fakeOAuth{})
+	rec := postAs(a, "/auth/cli", "Bearer "+githubPlayerToken)
+	var body cliLoginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status %d, %v: %s", rec.Code, err, rec.Body.String())
+	}
+	if body.Login != player.Login || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("got %+v", body)
+	}
+	if id, err := session.Verify(sessionKey, body.Token, loginNow.Add(session.CLI.LastsFor-time.Second), session.CLI); err != nil || id != player.ID {
+		t.Errorf("token: %d, %v", id, err)
+	}
+	if _, err := session.Verify(sessionKey, body.Token, loginNow, session.Website); err == nil {
+		t.Error("the CLI's token works as a website cookie")
+	}
+	if got := a.store.saved[player.ID]; got.Login != player.Login {
+		t.Errorf("saved: %+v", got)
+	}
+}
+
+func TestCLILoginFailures(t *testing.T) {
+	a := authAt(t, fakeOAuth{})
+	for name, authorization := range map[string]string{
+		"no token":     "",
+		"not GitHub's": "Bearer made-up",
+		"not a bearer": "Basic dXNlcjpwYXNz",
+		"empty bearer": "Bearer ",
+	} {
+		if rec := postAs(a, "/auth/cli", authorization); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s: status %d, want 401", name, rec.Code)
+		}
+	}
+	if rec := request(a, http.MethodGet, "/auth/cli"); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET: status %d", rec.Code)
+	}
+
+	down := authAt(t, fakeOAuth{})
+	down.store.down = true
+	if rec := postAs(down, "/auth/cli", "Bearer "+githubPlayerToken); rec.Code != http.StatusInternalServerError {
+		t.Errorf("database down: status %d", rec.Code)
 	}
 }

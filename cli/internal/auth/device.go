@@ -25,8 +25,6 @@ var client = &http.Client{Timeout: 30 * time.Second}
 const (
 	// githubURL is where the device flow happens.
 	githubURL = "https://github.com"
-	// apiURL is GitHub's API, for asking who a token belongs to.
-	apiURL = "https://api.github.com"
 )
 
 // DeviceCode is what the player types in on github.com, and what aocn polls with.
@@ -132,31 +130,6 @@ func nextStep(resp tokenResponse, interval time.Duration) (token string, next ti
 		return "", 0, fmt.Errorf("GitHub: %s", resp.Description)
 	}
 	return "", 0, fmt.Errorf("GitHub: %s", resp.Error)
-}
-
-// Login returns the login of the token's GitHub account, so aocn can say who signed in.
-func Login(ctx context.Context, token string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL+"/user", nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub answered %s", resp.Status)
-	}
-	var user struct {
-		Login string `json:"login"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		return "", err
-	}
-	return user.Login, nil
 }
 
 // post sends a form to GitHub and reads its JSON answer into v.

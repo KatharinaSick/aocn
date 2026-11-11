@@ -85,6 +85,36 @@ func do(ctx context.Context, method, path string, body io.Reader) (*http.Respons
 	return resp, nil
 }
 
+// Session is what signing in got from the API: its own token for the player, and their login.
+type Session struct {
+	Token string `json:"token"`
+	Login string `json:"login"`
+}
+
+// SignIn hands the GitHub token from the device flow to the API, once, and returns the API's
+// own token. aocn keeps only that: it carries the player's GitHub user ID, so the API never
+// has to ask GitHub who they are.
+func SignIn(ctx context.Context, githubToken string) (Session, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL()+"/auth/cli", nil)
+	if err != nil {
+		return Session{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+githubToken)
+	resp, err := client.Do(req)
+	if err != nil {
+		return Session{}, fmt.Errorf("couldn't reach %s: %w", host(), err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Session{}, responseError(resp)
+	}
+	var s Session
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&s); err != nil || s.Token == "" {
+		return Session{}, fmt.Errorf("%s answered without a sign-in. Run aocn login again", host())
+	}
+	return s, nil
+}
+
 // Preview says a door was handed out before it opens, because the player is a previewer.
 // Zero for an open door.
 type Preview struct {

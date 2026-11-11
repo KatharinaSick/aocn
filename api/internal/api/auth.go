@@ -42,6 +42,12 @@ type OAuthApp interface {
 	Exchange(ctx context.Context, code, redirectURI string) (string, error)
 }
 
+// GitHubUsers asks GitHub whose token it is. *github.Users does. Only logging in asks: once
+// on the website, once in aocn login.
+type GitHubUsers interface {
+	User(ctx context.Context, token string) (github.User, error)
+}
+
 // UserStore keeps who logged in.
 type UserStore interface {
 	Save(ctx context.Context, user users.User, at time.Time) error
@@ -53,7 +59,7 @@ type Auth struct {
 	// OAuth is nil when the API has no client secret, which only happens in dev mode.
 	OAuth OAuthApp
 	// Users finds out whose GitHub token it is.
-	Users      Users
+	Users      GitHubUsers
 	Store      UserStore
 	SessionKey []byte
 	// SiteURL is the website, without a trailing slash: GitHub sends people back to its
@@ -181,13 +187,13 @@ func handleCallback(log app.Logger, a Auth) http.Handler {
 			http.Error(w, "Logging in failed on our side. Try again in a few minutes.", http.StatusInternalServerError)
 			return
 		}
-		signed, err := session.Sign(a.SessionKey, gh.ID, now)
+		signed, err := session.Sign(a.SessionKey, gh.ID, now, session.Website)
 		if err != nil {
 			log.Error("Signing a session failed", "error", err)
 			http.Error(w, "Logging in failed on our side. Try again in a few minutes.", http.StatusInternalServerError)
 			return
 		}
-		http.SetCookie(w, a.cookie(sessionCookie, signed, session.LastsFor))
+		http.SetCookie(w, a.cookie(sessionCookie, signed, session.Website.LastsFor))
 		log.Info("Logged in", "github_user_id", gh.ID, "login", gh.Login)
 		http.Redirect(w, r, back, http.StatusSeeOther)
 	})
@@ -241,9 +247,53 @@ func (a Auth) loggedIn(r *http.Request) (int64, bool) {
 // is logged in.
 func sessionUser(r *http.Request, key []byte, now time.Time) (int64, bool) {
 	c, err := r.Cookie(sessionCookie)
-	if err != nil || len(key) == 0 {
+	if err != nil {
 		return 0, false
 	}
-	id, err := session.Verify(key, c.Value, now)
+	id, err := session.Verify(key, c.Value, now, session.Website)
 	return id, err == nil
+}
+
+type cliLoginResponse struct {
+	Token string `json:"token"`
+	Login string `json:"login"`
+}
+
+// handleCLILogin swaps the GitHub token from aocn login's device flow for this API's own,
+// once. The CLI keeps only this API's token, which carries the GitHub user ID: no request
+// after this asks GitHub who it is.
+func handleCLILogin(log app.Logger, a Auth) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok || strings.TrimSpace(token) == "" {
+			writeJSONError(w, http.StatusUnauthorized, "sign in with: aocn login")
+			return
+		}
+		ctx := r.Context()
+		gh, err := a.Users.User(ctx, token)
+		if errors.Is(err, github.ErrBadToken) {
+			writeJSONError(w, http.StatusUnauthorized, "GitHub doesn't accept this sign-in. Run aocn login again")
+			return
+		}
+		if err != nil {
+			log.Error("Asking GitHub who is signing in failed", "error", err)
+			writeJSONError(w, http.StatusBadGateway, "GitHub couldn't tell us who you are right now, try again in a few minutes")
+			return
+		}
+		now := a.now()
+		if err := a.Store.Save(ctx, users.User{GitHubID: gh.ID, Login: gh.Login, AvatarURL: gh.AvatarURL}, now); err != nil {
+			log.Error("Saving who signed in failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "signing in failed on our side, try again in a few minutes")
+			return
+		}
+		signed, err := session.Sign(a.SessionKey, gh.ID, now, session.CLI)
+		if err != nil {
+			log.Error("Signing a CLI token failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "signing in failed on our side, try again in a few minutes")
+			return
+		}
+		log.Info("Signed in from the CLI", "github_user_id", gh.ID, "login", gh.Login)
+		writeJSON(w, http.StatusOK, cliLoginResponse{Token: signed, Login: gh.Login})
+	})
 }

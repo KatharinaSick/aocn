@@ -1,5 +1,6 @@
-// Package auth signs players in with GitHub and keeps their token. The API asks GitHub whose
-// token it is, so a result is saved under the player's GitHub account.
+// Package auth signs players in with GitHub's device flow and keeps the token the API hands
+// out for it (see api.SignIn). That token carries the player's GitHub user ID, so a result is
+// saved under their GitHub account without the API asking GitHub each time.
 package auth
 
 import (

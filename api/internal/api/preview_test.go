@@ -73,11 +73,11 @@ func TestOpenDoorIsNoPreview(t *testing.T) {
 	}
 }
 
-// At 06:00 nothing may depend on GitHub: an open door never asks it, whatever token comes
-// along, even a broken one.
-func TestOpenDoorNeverAsksGitHub(t *testing.T) {
+// At 06:00 nothing may depend on anyone: an open door never looks a token up, whatever token
+// comes along, even a broken one, and even with the database down.
+func TestOpenDoorNeedsNobody(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, uploaded)
-	h.users.down = true
+	h.accounts.down = true
 	for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks"} {
 		for _, token := range []string{"", playerToken, "made-up"} {
 			if rec := getAs(h, path, token); rec.Code != http.StatusOK {
@@ -85,32 +85,39 @@ func TestOpenDoorNeverAsksGitHub(t *testing.T) {
 			}
 		}
 	}
-	if h.users.asked != 0 {
-		t.Errorf("GitHub was asked %d times", h.users.asked)
+	if h.accounts.asked != 0 {
+		t.Errorf("looked someone up %d times", h.accounts.asked)
 	}
 }
 
-// Someone signed out gets the closed door without anyone asking GitHub.
-func TestClosedDoorSignedOutNeverAsksGitHub(t *testing.T) {
+// Someone signed out gets the closed door without anyone being looked up.
+func TestClosedDoorSignedOutLooksNobodyUp(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
 	for _, path := range closedPaths {
 		get(h, path)
 	}
-	if h.users.asked != 0 {
-		t.Errorf("GitHub was asked %d times", h.users.asked)
+	if h.accounts.asked != 0 {
+		t.Errorf("looked someone up %d times", h.accounts.asked)
 	}
 }
 
-// A token GitHub doesn't accept gets a 401, so the CLI can say to sign in again, and nothing
-// about the door.
+// A token this API didn't sign gets a 401, so the CLI can say to sign in again, and nothing
+// about the door. That includes a GitHub token, which aocn before 0.4.0 sent.
 func TestClosedDoorWithBadToken(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
-	for _, path := range closedPaths {
-		rec := getAs(h, path, "made-up")
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("%s: status %d, want 401", path, rec.Code)
+	website, _ := session.Sign(sessionKey, previewer.ID, door1OpensAt.Add(-24*time.Hour), session.Website)
+	for name, token := range map[string]string{
+		"made up":          "made-up",
+		"a GitHub token":   githubPlayerToken,
+		"a website cookie": website,
+	} {
+		for _, path := range closedPaths {
+			rec := getAs(h, path, token)
+			if rec.Code != http.StatusUnauthorized {
+				t.Errorf("%s, %s: status %d, want 401", name, path, rec.Code)
+			}
+			assertNoSecrets(t, path, rec)
 		}
-		assertNoSecrets(t, path, rec)
 	}
 
 	// Not a bearer token at all.
@@ -121,16 +128,18 @@ func TestClosedDoorWithBadToken(t *testing.T) {
 	assertNoSecrets(t, "basic auth", rec)
 }
 
-// When GitHub can't say who's asking, a previewer gets an error, never the door by mistake.
-func TestClosedDoorWhileGitHubIsDown(t *testing.T) {
+// A preview needs only the token: it carries the user ID, so neither GitHub nor the database
+// is asked, and a previewer gets their door while the database is down.
+func TestPreviewLooksNobodyUp(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
-	h.users.down = true
+	h.accounts.down = true
 	for _, path := range closedPaths {
-		rec := getAs(h, path, previewerToken)
-		if rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("%s: status %d, want 503", path, rec.Code)
+		if rec := getAs(h, path, previewerToken); rec.Code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", path, rec.Code)
 		}
-		assertNoSecrets(t, path, rec)
+	}
+	if h.accounts.asked != 0 {
+		t.Errorf("looked someone up %d times", h.accounts.asked)
 	}
 }
 
@@ -138,7 +147,7 @@ func TestClosedDoorWhileGitHubIsDown(t *testing.T) {
 // for the user with key.
 func getWithSession(t *testing.T, h http.Handler, path string, key []byte, userID int64) *httptest.ResponseRecorder {
 	t.Helper()
-	signed, err := session.Sign(key, userID, door1OpensAt.Add(-30*24*time.Hour))
+	signed, err := session.Sign(key, userID, door1OpensAt.Add(-30*24*time.Hour), session.Website)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +167,8 @@ func TestPreviewerGetsTheClosedDoorPageWithTheSessionCookie(t *testing.T) {
 	if !page.Preview || page.Title != "Second" || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Errorf("got %+v, Cache-Control %q", page, rec.Header().Get("Cache-Control"))
 	}
-	if h.users.asked != 0 {
-		t.Errorf("asked GitHub %d times", h.users.asked)
+	if h.accounts.asked != 0 {
+		t.Errorf("looked someone up %d times", h.accounts.asked)
 	}
 }
 

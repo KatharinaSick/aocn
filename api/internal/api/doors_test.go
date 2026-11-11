@@ -16,6 +16,7 @@ import (
 	"github.com/katharinasick/aocn/api/internal/github"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/session"
 	"github.com/katharinasick/aocn/api/internal/users"
 )
 
@@ -66,39 +67,71 @@ var uploaded = memoryStorage{
 // Everything a closed door must never give away, from uploaded.
 var secrets = []string{"First", "The story", "Second", "Secret", "bundle", "first-ns", "secret-ns"}
 
-// Tokens the fake GitHub knows. The previewer gets every door early, the door 3 previewer
-// only door 3, the player none.
-const (
-	previewerToken      = "previewer-token"
-	door3PreviewerToken = "door3-previewer-token"
-	playerToken         = "player-token"
-)
-
+// Who's in the tests. The previewer gets every door early, the door 3 previewer only door 3,
+// the player none.
 var (
 	previewer      = github.User{ID: 7, Login: "previewer", AvatarURL: "https://example.com/7.png"}
 	door3Previewer = github.User{ID: 9, Login: "door3-previewer", AvatarURL: "https://example.com/9.png"}
 	player         = github.User{ID: 8, Login: "player", AvatarURL: "https://example.com/8.png"}
 )
 
-// fakeUsers is GitHub: it knows two tokens, counts how often it's asked, and can be down.
-type fakeUsers struct {
+// Their tokens, as aocn login gets them from the API.
+var (
+	previewerToken      = cliToken(previewer.ID)
+	door3PreviewerToken = cliToken(door3Previewer.ID)
+	playerToken         = cliToken(player.ID)
+)
+
+// cliToken signs a CLI token for the user, valid for every moment the tests ask at.
+func cliToken(githubUserID int64) string {
+	token, err := session.Sign(sessionKey, githubUserID, door1OpensAt.Add(-30*24*time.Hour), session.CLI)
+	if err != nil {
+		panic(err)
+	}
+	return token
+}
+
+// GitHub tokens the fake GitHub knows, for logging in on the website and with aocn login.
+const (
+	githubPlayerToken = "gho_player"
+)
+
+// fakeGitHub is GitHub: it knows the player's token, counts how often it's asked, and can be
+// down.
+type fakeGitHub struct {
 	asked int
 	down  bool
 }
 
-func (f *fakeUsers) User(_ context.Context, token string) (github.User, error) {
+func (f *fakeGitHub) User(_ context.Context, token string) (github.User, error) {
 	f.asked++
 	switch {
 	case f.down:
 		return github.User{}, errors.New("GitHub is down")
-	case token == previewerToken:
-		return previewer, nil
-	case token == door3PreviewerToken:
-		return door3Previewer, nil
-	case token == playerToken:
+	case token == githubPlayerToken:
 		return player, nil
 	}
 	return github.User{}, github.ErrBadToken
+}
+
+// fakeAccounts is the database of users: it knows everyone above, counts how often it's
+// asked, and can be down.
+type fakeAccounts struct {
+	asked int
+	down  bool
+}
+
+func (f *fakeAccounts) Get(_ context.Context, id int64) (users.User, error) {
+	f.asked++
+	if f.down {
+		return users.User{}, errors.New("database is down")
+	}
+	for _, u := range []github.User{previewer, door3Previewer, player} {
+		if u.ID == id {
+			return users.User{GitHubID: u.ID, Login: u.Login, AvatarURL: u.AvatarURL}, nil
+		}
+	}
+	return users.User{}, users.ErrNotFound
 }
 
 // fakeResults keeps what was recorded.
@@ -122,8 +155,8 @@ func (f *fakeResults) Record(_ context.Context, user users.User, result results.
 
 type testAPI struct {
 	http.Handler
-	users   *fakeUsers
-	results *fakeResults
+	accounts *fakeAccounts
+	results  *fakeResults
 }
 
 func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
@@ -132,13 +165,13 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := testAPI{users: &fakeUsers{}, results: &fakeResults{}}
+	a := testAPI{accounts: &fakeAccounts{}, results: &fakeResults{}}
 	a.Handler = NewHandler(nopLogger{}, Subscriptions{}, Doors{
 		Schedule: sched,
 		Storage:  storage,
 		Pages:    &doors.Pages{Storage: storage},
 		Checks:   &doors.Checks{Storage: storage},
-		Users:    a.users,
+		Accounts: a.accounts,
 		Previewers: app.Previewers{
 			previewer.ID:      {All: true},
 			door3Previewer.ID: {Doors: map[int]bool{3: true}},

@@ -78,21 +78,22 @@ func main() {
 		os.Exit(1)
 	}
 	githubUsers := github.NewUsers()
+	userStore := users.NewStore(pool)
 	resultStore := results.NewStore(pool)
 	doorsAPI := api.Doors{
 		Schedule:   sched,
 		Storage:    doorStorage,
 		Pages:      &doors.Pages{Storage: doorStorage},
 		Checks:     &doors.Checks{Storage: doorStorage},
-		Users:      githubUsers,
+		Accounts:   userStore,
 		Previewers: cfg.PreviewerAccess,
 		Results:    resultStore,
 	}
 	log.Info("Previewers loaded", "count", len(cfg.PreviewerAccess))
 
-	userStore := users.NewStore(pool)
 	authAPI := auth(log, cfg, githubUsers, userStore)
-	// The door page takes the website's session cookie, signed with the same key.
+	// The door endpoints check the CLI's token, and the door page the website's session
+	// cookie: both signed with this key.
 	doorsAPI.SessionKey = authAPI.SessionKey
 	profiles := api.Profiles{Schedule: sched, Users: userStore, Results: resultStore}
 
