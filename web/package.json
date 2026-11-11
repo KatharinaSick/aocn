@@ -19,7 +19,10 @@
     "@astrojs/netlify": "^8.2.6",
     "@astrojs/sitemap": "^3.7.4",
     "@astrojs/vue": "^7.0.3",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@resvg/resvg-wasm": "^2.6.2",
     "astro": "^7.3.5",
+    "satori": "^0.63.2",
     "vue": "^3.5.43"
   },
   "allowScripts": {

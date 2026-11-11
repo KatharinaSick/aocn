@@ -10,20 +10,23 @@
 // (WCAG 1.4.11), and line-strong is 1.7:1.
 //
 // With href it is a link that looks like a button, for actions that are a URL (the
-// calendar file).
+// calendar file). With download as well, the browser saves the file under that name (the
+// share image on your profile card).
 import type { HTMLAttributes } from 'astro/types';
 
 interface Props extends HTMLAttributes<'button'> {
   variant?: 'primary' | 'secondary' | 'text';
   href?: string;
+  /** With href: save the file under this name instead of opening it. */
+  download?: string;
 }
 
-const { variant = 'secondary', type = 'button', href, class: className, ...attributes } = Astro.props;
+const { variant = 'secondary', type = 'button', href, download, class: className, ...attributes } = Astro.props;
 const classes = ['button', `button-${variant}`, className];
 ---
 
 {href ? (
-  <a class:list={classes} href={href} {...attributes}>
+  <a class:list={classes} href={href} download={download} {...attributes}>
     <slot />
   </a>
 ) : (

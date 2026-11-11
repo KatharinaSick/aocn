@@ -42,6 +42,15 @@ Authentication is Application Default Credentials: `gcloud auth application-defa
   # re-run the deploy, or deploy anything.
   printf '%s' '1234567:all 7654321:1 1111111:3,5' \
     | gcloud secrets versions add previewers --data-file=-
+
+  # The client secret of the GitHub OAuth app "Advent of Cloud Native", generated on its
+  # page under GitHub → Settings → Developer settings → OAuth Apps.
+  printf '%s' 'XXXX' \
+    | gcloud secrets versions add github-client-secret --data-file=-
+
+  # Any random value works; rotating it logs everyone out of the website.
+  openssl rand -base64 32 | tr -d '\n' \
+    | gcloud secrets versions add session-signing-key --data-file=-
   ```
 
 ## Bootstrapping

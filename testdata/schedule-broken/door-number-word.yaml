@@ -1,0 +1,7 @@
+# error: doors: "one" is not a door number
+# Rejected by the API and the website alike, with an error that contains the text above.
+doors:
+  one: 2030-12-01T06:00:00+01:00
+christmasEve:
+  beforeSeason: 2029-12-24T06:00:00+01:00
+  finale: 2030-12-24T06:00:00+01:00

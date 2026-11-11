@@ -3,12 +3,14 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -21,11 +23,12 @@ type User struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
-// ErrBadToken means GitHub doesn't accept the token: revoked, expired or made up.
+// ErrBadToken means the token isn't one GitHub issued to this OAuth app: revoked, expired,
+// made up, or a token of any other app or a personal access token.
 var ErrBadToken = errors.New("GitHub doesn't accept this token")
 
-// cacheFor is how long a token's user is kept. A revoked token keeps working this long, and
-// a player who runs aocn verify again and again asks GitHub once.
+// cacheFor is how long a token's user is kept. Only logging in asks, once per login, so this
+// mostly saves asking twice when a login is retried; a revoked token keeps working this long.
 const cacheFor = 5 * time.Minute
 
 // maxCached bounds the cache. Past it, expired entries are dropped, and if that isn't
@@ -34,10 +37,17 @@ const maxCached = 10_000
 
 // Users asks GitHub whose token it is and keeps the answer for a few minutes. Tokens are
 // kept only as their SHA-256, so the cache holds nothing a token could be rebuilt from.
+//
+// It asks as the OAuth app, with its client secret, and GitHub answers only for tokens it
+// issued to this app. Asking GET /user instead would take any token: one that another app
+// holds for someone, or a personal access token, would then sign them in here too. Asking as
+// the app also counts against the app's rate limit, not against our address.
 type Users struct {
 	// BaseURL is GitHub's API, https://api.github.com. Tests point it elsewhere.
-	BaseURL string
-	Client  *http.Client
+	BaseURL      string
+	ClientID     string
+	ClientSecret string
+	Client       *http.Client
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 
@@ -50,9 +60,14 @@ type entry struct {
 	expires time.Time
 }
 
-// NewUsers asks api.github.com.
-func NewUsers() *Users {
-	return &Users{BaseURL: "https://api.github.com", Client: &http.Client{Timeout: 10 * time.Second}}
+// NewUsers asks api.github.com as the OAuth app.
+func NewUsers(clientID, clientSecret string) *Users {
+	return &Users{
+		BaseURL:      "https://api.github.com",
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Client:       &http.Client{Timeout: 10 * time.Second},
+	}
 }
 
 func (u *Users) now() time.Time {
@@ -99,12 +114,30 @@ func (u *Users) User(ctx context.Context, token string) (User, error) {
 	return user, nil
 }
 
+// checkResponse is what GitHub's check-token endpoint answers, as far as it's read.
+type checkResponse struct {
+	User User `json:"user"`
+	App  struct {
+		ClientID string `json:"client_id"`
+	} `json:"app"`
+}
+
+// ask checks the token with GitHub as the OAuth app: POST /applications/{client_id}/token.
 func (u *Users) ask(ctx context.Context, token string) (User, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.BaseURL+"/user", nil)
+	if u.ClientID == "" || u.ClientSecret == "" {
+		return User{}, errors.New("asking GitHub who this is: no OAuth app to ask as")
+	}
+	body, err := json.Marshal(map[string]string{"access_token": token})
 	if err != nil {
 		return User{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	endpoint := u.BaseURL + "/applications/" + url.PathEscape(u.ClientID) + "/token"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return User{}, err
+	}
+	req.SetBasicAuth(u.ClientID, u.ClientSecret)
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -115,17 +148,22 @@ func (u *Users) ask(ctx context.Context, token string) (User, error) {
 	defer resp.Body.Close()
 
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
+	// 404: not a token of this app. 422: not a token at all. A 401 would be our own client
+	// secret being wrong, which is our mistake, not the caller's, so it's an error below.
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusUnprocessableEntity:
 		return User{}, ErrBadToken
 	case resp.StatusCode != http.StatusOK:
 		return User{}, fmt.Errorf("asking GitHub who this is: %s", resp.Status)
 	}
-	var user User
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	var check checkResponse
+	if err := json.NewDecoder(resp.Body).Decode(&check); err != nil {
 		return User{}, fmt.Errorf("reading GitHub's answer: %w", err)
 	}
-	if user.ID <= 0 || user.Login == "" {
+	if check.App.ClientID != u.ClientID {
+		return User{}, ErrBadToken
+	}
+	if check.User.ID <= 0 || check.User.Login == "" {
 		return User{}, errors.New("GitHub answered without a user")
 	}
-	return user, nil
+	return check.User, nil
 }

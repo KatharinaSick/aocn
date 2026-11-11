@@ -11,6 +11,7 @@ import (
 
 	"github.com/katharinasick/aocn/api/internal/doors"
 	"github.com/katharinasick/aocn/api/internal/results"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
 // withAuthorization sends a request with this Authorization header (none if empty).
@@ -73,7 +74,7 @@ func TestVerifyRecordsEveryRun(t *testing.T) {
 		t.Fatalf("recorded %d runs, want 2", len(h.results.recorded))
 	}
 	r := h.results.recorded[1]
-	if r.user != (results.User{GitHubID: 8, Login: "player", AvatarURL: "https://example.com/8.png"}) {
+	if r.user != (users.User{GitHubID: 8, Login: "player", AvatarURL: "https://example.com/8.png"}) {
 		t.Errorf("user: %+v", r.user)
 	}
 	if r.result.Door != 1 || !r.result.Passed || !r.result.At.Equal(now) || len(r.result.Checks) != len(checks) {
@@ -123,11 +124,11 @@ func TestVerifyClosedDoor(t *testing.T) {
 	}
 
 	// Previewers of another door are players here.
-	if rec := verifyAs(h, "1", door2PreviewerToken, sent); rec.Code != http.StatusNotFound {
-		t.Errorf("door 2 previewer: status %d, want 404", rec.Code)
+	if rec := verifyAs(h, "1", door3PreviewerToken, sent); rec.Code != http.StatusNotFound {
+		t.Errorf("door 3 previewer: status %d, want 404", rec.Code)
 	}
 	if len(h.results.recorded) != 0 {
-		t.Fatalf("recorded a door 2 previewer's result for door 1")
+		t.Fatalf("recorded a door 3 previewer's result for door 1")
 	}
 
 	if rec := verifyAs(h, "1", previewerToken, sent); rec.Code != http.StatusOK {
@@ -205,5 +206,26 @@ func TestMatchResultsKeepsTheChecksOrderAndShortensAnswers(t *testing.T) {
 	}
 	if got := []rune(ordered[1].Got); len(got) != maxGotRunes {
 		t.Errorf("got kept %d runes, want %d", len(got), maxGotRunes)
+	}
+}
+
+// Saving a result looks the player up, for the login to save it under. A token for someone
+// the database doesn't know (deleted, or another environment's key) means signing in again.
+func TestVerifyNeedsTheAccount(t *testing.T) {
+	now := door1OpensAt.Add(time.Hour)
+	checks := door1Checks(t)
+
+	h := doorsAt(t, now, uploaded)
+	h.accounts.down = true
+	if rec := verifyAs(h, "1", playerToken, resultsFor(checks, true)); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("database down: status %d, want 503", rec.Code)
+	}
+
+	h = doorsAt(t, now, uploaded)
+	if rec := verifyAs(h, "1", cliToken(404), resultsFor(checks, true)); rec.Code != http.StatusUnauthorized {
+		t.Errorf("unknown account: status %d, want 401", rec.Code)
+	}
+	if len(h.results.recorded) != 0 {
+		t.Errorf("recorded %d runs", len(h.results.recorded))
 	}
 }

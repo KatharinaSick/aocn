@@ -1,0 +1,8 @@
+# error: doors: "01" is not a door number
+# Rejected by the API and the website alike, with an error that contains the text above.
+# One spelling per door, as in its URL: 1, never 01.
+doors:
+  01: 2030-12-01T06:00:00+01:00
+christmasEve:
+  beforeSeason: 2029-12-24T06:00:00+01:00
+  finale: 2030-12-24T06:00:00+01:00

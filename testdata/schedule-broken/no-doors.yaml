@@ -1,6 +1,6 @@
-# error: doors: must be a list with at least one date
+# error: doors: must map door numbers to dates, with at least one door
 # Rejected by the API and the website alike, with an error that contains the text above.
-doors: []
+doors: {}
 christmasEve:
   beforeSeason: 2029-12-24T06:00:00+01:00
   finale: 2030-12-24T06:00:00+01:00

@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="skyBg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1000">
+      <stop offset="0" stop-color="#050912"/>
+      <stop offset="0.42" stop-color="#07101a"/>
+      <stop offset="0.72" stop-color="#0a1114"/>
+    </linearGradient>
+    <linearGradient id="skyCurtainA" gradientUnits="userSpaceOnUse" x1="1000" y1="318" x2="1053" y2="133">
+      <stop offset="0" stop-color="#5CE6A8" stop-opacity="0"/>
+      <stop offset="0.08" stop-color="#7DF5C0" stop-opacity="0.95"/>
+      <stop offset="0.3" stop-color="#3FD3B0" stop-opacity="0.7"/>
+      <stop offset="0.65" stop-color="#6C7CF0" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#A99BFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="skyCurtainB" gradientUnits="userSpaceOnUse" x1="1300" y1="202" x2="1348" y2="30">
+      <stop offset="0" stop-color="#A99BFF" stop-opacity="0"/>
+      <stop offset="0.12" stop-color="#9C8CFF" stop-opacity="0.8"/>
+      <stop offset="0.5" stop-color="#7A5CE0" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#5A3FC0" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="skyCurtainC" gradientUnits="userSpaceOnUse" x1="1200" y1="452" x2="1214" y2="398">
+      <stop offset="0" stop-color="#5CE6A8" stop-opacity="0"/>
+      <stop offset="0.08" stop-color="#7DF5C0" stop-opacity="0.95"/>
+      <stop offset="0.3" stop-color="#3FD3B0" stop-opacity="0.7"/>
+      <stop offset="0.65" stop-color="#6C7CF0" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#A99BFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="skyRays" x="-5%" y="-10%" width="110%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.016 0.0012" numOctaves="2" seed="11" result="noise"/>
+      <feColorMatrix in="noise" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  2.6 0 0 0 -0.75" result="streaks"/>
+      <feComposite in="SourceGraphic" in2="streaks" operator="in" result="rayed"/>
+      <feGaussianBlur in="rayed" stdDeviation="2 9"/>
+    </filter>
+    <filter id="skyGlow" x="-10%" y="-20%" width="120%" height="140%">
+      <feGaussianBlur stdDeviation="38"/>
+    </filter>
+    <!-- CSS mask on .skyAurora: transparent 0%, 0.15 at 30%, opaque from 62% -->
+    <linearGradient id="skyFade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.3" stop-color="#fff" stop-opacity="0.15"/>
+      <stop offset="0.62" stop-color="#fff" stop-opacity="1"/>
+    </linearGradient>
+    <mask id="skyFadeMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1520" height="640">
+      <rect width="1520" height="640" fill="url(#skyFade)"/>
+    </mask>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#0a1114"/>
+  <rect width="1920" height="1000" fill="url(#skyBg)"/>
+
+  <g fill="#dcebff">
+    <circle cx="556.00" cy="0" r="0.5" fill-opacity="0.66"/>
+    <circle cx="632.00" cy="411" r="0.5" fill-opacity="0.23"/>
+    <circle cx="1314.67" cy="432" r="0.5" fill-opacity="0.22"/>
+    <circle cx="718.67" cy="482" r="0.5" fill-opacity="0.13"/>
+    <circle cx="1313.33" cy="387" r="0.5" fill-opacity="0.12"/>
+    <circle cx="236.00" cy="572" r="0.5" fill-opacity="0.17"/>
+    <circle cx="1236.00" cy="572" r="0.5" fill-opacity="0.16"/>
+    <circle cx="714.67" cy="563" r="0.5" fill-opacity="0.19"/>
+    <circle cx="293.33" cy="499" r="0.5" fill-opacity="0.14"/>
+    <circle cx="1800.00" cy="195" r="0.5" fill-opacity="0.26"/>
+    <circle cx="112.00" cy="411" r="0.5" fill-opacity="0.31"/>
+    <circle cx="809.33" cy="285" r="0.5" fill-opacity="0.29"/>
+    <circle cx="701.33" cy="560" r="0.5" fill-opacity="0.07"/>
+    <circle cx="988.00" cy="361" r="0.5" fill-opacity="0.36"/>
+    <circle cx="700.00" cy="181" r="0.5" fill-opacity="0.26"/>
+    <circle cx="1178.67" cy="137" r="0.5" fill-opacity="0.39"/>
+    <circle cx="1657.33" cy="558" r="0.5" fill-opacity="0.13"/>
+    <circle cx="969.33" cy="338" r="0.5" fill-opacity="0.26"/>
+    <circle cx="1360.00" cy="587" r="0.5" fill-opacity="0.11"/>
+    <circle cx="634.67" cy="303" r="0.5" fill-opacity="0.23"/>
+    <circle cx="213.33" cy="464" r="0.5" fill-opacity="0.27"/>
+    <circle cx="294.67" cy="18" r="0.5" fill-opacity="0.39"/>
+    <circle cx="1214.67" cy="637" r="0.5" fill-opacity="0.06"/>
+    <circle cx="264.00" cy="214" r="1.5" fill-opacity="0.36"/>
+    <circle cx="1700.00" cy="539" r="1.5" fill-opacity="0.21"/>
+    <circle cx="20.00" cy="437" r="0.5" fill-opacity="0.15"/>
+    <circle cx="1184.00" cy="17" r="0.5" fill-opacity="0.20"/>
+    <circle cx="1320.00" cy="421" r="0.5" fill-opacity="0.21"/>
+    <circle cx="717.33" cy="537" r="0.5" fill-opacity="0.10"/>
+    <circle cx="5.33" cy="32" r="1.5" fill-opacity="0.43"/>
+    <circle cx="40.00" cy="340" r="1.5" fill-opacity="0.38"/>
+    <circle cx="1085.33" cy="62" r="0.5" fill-opacity="0.63"/>
+    <circle cx="401.33" cy="100" r="0.5" fill-opacity="0.27"/>
+    <circle cx="1345.33" cy="10" r="0.5" fill-opacity="0.58"/>
+    <circle cx="212.00" cy="241" r="1.5" fill-opacity="0.15"/>
+    <circle cx="1714.67" cy="37" r="0.5" fill-opacity="0.52"/>
+    <circle cx="1906.67" cy="538" r="1.5" fill-opacity="0.21"/>
+    <circle cx="476.00" cy="440" r="0.5" fill-opacity="0.18"/>
+    <circle cx="450.67" cy="537" r="0.5" fill-opacity="0.13"/>
+    <circle cx="674.67" cy="541" r="0.5" fill-opacity="0.16"/>
+    <circle cx="1392.00" cy="416" r="0.5" fill-opacity="0.18"/>
+    <circle cx="1892.00" cy="67" r="1.5" fill-opacity="0.33"/>
+    <circle cx="1762.67" cy="337" r="0.5" fill-opacity="0.37"/>
+    <circle cx="954.67" cy="347" r="0.5" fill-opacity="0.15"/>
+    <circle cx="925.33" cy="445" r="0.5" fill-opacity="0.30"/>
+    <circle cx="1272.00" cy="207" r="0.5" fill-opacity="0.21"/>
+    <circle cx="1453.33" cy="285" r="0.5" fill-opacity="0.29"/>
+    <circle cx="573.33" cy="429" r="0.5" fill-opacity="0.10"/>
+    <circle cx="558.67" cy="69" r="0.5" fill-opacity="0.51"/>
+    <circle cx="144.00" cy="357" r="0.5" fill-opacity="0.23"/>
+    <circle cx="1746.67" cy="487" r="0.5" fill-opacity="0.26"/>
+    <circle cx="1462.67" cy="603" r="0.5" fill-opacity="0.05"/>
+    <circle cx="70.67" cy="407" r="0.5" fill-opacity="0.32"/>
+    <circle cx="162.67" cy="19" r="0.5" fill-opacity="0.25"/>
+    <circle cx="368.00" cy="317" r="0.5" fill-opacity="0.41"/>
+    <circle cx="466.67" cy="68" r="0.5" fill-opacity="0.49"/>
+    <circle cx="1293.33" cy="635" r="0.5" fill-opacity="0.08"/>
+    <circle cx="117.33" cy="176" r="0.5" fill-opacity="0.32"/>
+    <circle cx="293.33" cy="475" r="1.5" fill-opacity="0.28"/>
+    <circle cx="404.00" cy="248" r="0.5" fill-opacity="0.18"/>
+    <circle cx="524.00" cy="54" r="0.5" fill-opacity="0.22"/>
+    <circle cx="1908.00" cy="281" r="0.5" fill-opacity="0.29"/>
+    <circle cx="8.00" cy="186" r="0.5" fill-opacity="0.27"/>
+    <circle cx="449.33" cy="186" r="1.5" fill-opacity="0.19"/>
+    <circle cx="838.67" cy="450" r="0.5" fill-opacity="0.25"/>
+    <circle cx="1270.67" cy="607" r="0.5" fill-opacity="0.14"/>
+    <circle cx="954.67" cy="146" r="0.5" fill-opacity="0.33"/>
+    <circle cx="1277.33" cy="290" r="0.5" fill-opacity="0.36"/>
+    <circle cx="1622.67" cy="411" r="1.5" fill-opacity="0.31"/>
+    <circle cx="1837.33" cy="202" r="1.5" fill-opacity="0.33"/>
+    <circle cx="658.67" cy="152" r="0.5" fill-opacity="0.19"/>
+    <circle cx="1833.33" cy="395" r="0.5" fill-opacity="0.29"/>
+    <circle cx="1533.33" cy="71" r="0.5" fill-opacity="0.29"/>
+    <circle cx="1220.00" cy="566" r="0.5" fill-opacity="0.18"/>
+    <circle cx="1674.67" cy="267" r="0.5" fill-opacity="0.28"/>
+    <circle cx="1318.67" cy="530" r="0.5" fill-opacity="0.11"/>
+    <circle cx="1130.67" cy="174" r="0.5" fill-opacity="0.23"/>
+    <circle cx="649.33" cy="551" r="0.5" fill-opacity="0.19"/>
+    <circle cx="590.67" cy="533" r="1.5" fill-opacity="0.09"/>
+    <circle cx="762.67" cy="0" r="0.5" fill-opacity="0.27"/>
+    <circle cx="332.00" cy="383" r="0.5" fill-opacity="0.34"/>
+    <circle cx="336.00" cy="593" r="0.5" fill-opacity="0.14"/>
+    <circle cx="1558.67" cy="333" r="0.5" fill-opacity="0.12"/>
+    <circle cx="636.00" cy="429" r="0.5" fill-opacity="0.12"/>
+    <circle cx="1129.33" cy="600" r="0.5" fill-opacity="0.12"/>
+    <circle cx="1146.67" cy="390" r="0.5" fill-opacity="0.29"/>
+    <circle cx="432.00" cy="8" r="0.5" fill-opacity="0.50"/>
+    <circle cx="1190.67" cy="92" r="0.5" fill-opacity="0.28"/>
+    <circle cx="1738.67" cy="479" r="0.5" fill-opacity="0.13"/>
+    <circle cx="1520.00" cy="381" r="0.5" fill-opacity="0.21"/>
+  </g>
+
+  <g transform="translate(440 -30)" opacity="0.5">
+    <g mask="url(#skyFadeMask)">
+      <svg width="1520" height="640" viewBox="0 0 1520 640" overflow="hidden">
+        <g filter="url(#skyGlow)" opacity="0.55">
+          <path d="M 440 -30 C 720 30, 920 90, 1120 170 S 1420 270, 1560 300 L 1560 470 C 1400 440, 1220 380, 1020 320 S 660 190, 440 150 Z" fill="url(#skyCurtainA)"/>
+          <path d="M 1040 -40 C 1220 0, 1400 50, 1560 90 L 1560 270 C 1420 240, 1240 180, 1060 130 Z" fill="url(#skyCurtainB)"/>
+        </g>
+        <g filter="url(#skyRays)">
+          <path d="M 440 -30 C 720 30, 920 90, 1120 170 S 1420 270, 1560 300 L 1560 470 C 1400 440, 1220 380, 1020 320 S 660 190, 440 150 Z" fill="url(#skyCurtainA)"/>
+          <path d="M 1040 -40 C 1220 0, 1400 50, 1560 90 L 1560 270 C 1420 240, 1240 180, 1060 130 Z" fill="url(#skyCurtainB)"/>
+          <path d="M 800 290 C 1000 340, 1220 400, 1560 440 L 1560 490 C 1220 450, 1000 390, 800 340 Z" fill="url(#skyCurtainC)" opacity="0.55"/>
+        </g>
+      </svg>
+    </g>
+  </g>
+</svg>

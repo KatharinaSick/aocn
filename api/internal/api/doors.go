@@ -14,9 +14,10 @@ import (
 
 	"github.com/katharinasick/aocn/api/internal/app"
 	"github.com/katharinasick/aocn/api/internal/doors"
-	"github.com/katharinasick/aocn/api/internal/github"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/session"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
 // Everything was uploaded weeks before. These handlers decide on each request whether a
@@ -33,23 +34,27 @@ type Doors struct {
 	Storage  doors.Storage
 	Pages    *doors.Pages
 	Checks   *doors.Checks
-	// Users finds out whose GitHub token a request carries.
-	Users Users
+	// Accounts finds a signed-in caller's login, for saving their results.
+	Accounts Accounts
 	// Previewers says who gets which doors early.
 	Previewers app.Previewers
 	Results    ResultStore
+	// SessionKey checks the CLI's token, and the website's session cookie, which the door page
+	// takes instead: the website's function passes it on, so a previewer sees their door
+	// early there. Both carry only the GitHub user ID, so nobody asks GitHub on a request.
+	SessionKey []byte
 	// Now is the clock; nil means time.Now. Tests set it.
 	Now func() time.Time
 }
 
-// Users finds out whose GitHub token it is. *github.Users asks GitHub.
-type Users interface {
-	User(ctx context.Context, token string) (github.User, error)
+// Accounts finds a user by GitHub ID. *users.Store asks the database.
+type Accounts interface {
+	Get(ctx context.Context, githubUserID int64) (users.User, error)
 }
 
 // ResultStore keeps what aocn verify sends.
 type ResultStore interface {
-	Record(ctx context.Context, user results.User, result results.Result) error
+	Record(ctx context.Context, user users.User, result results.Result) error
 }
 
 func (d Doors) now() time.Time {
@@ -89,17 +94,20 @@ type access struct {
 	opensAt time.Time
 	// preview means the door isn't open and the caller is a previewer of it.
 	preview bool
-	// caller is who sent the request. Only known when it had to be: when the endpoint needs
-	// a signed-in caller, or the door is closed and the request carries a token.
-	caller *github.User
+	// callerID is the GitHub user ID of who sent the request, 0 if unknown. Only known when
+	// it had to be: when the endpoint needs a signed-in caller, or the door is closed and the
+	// request carries a token or, on the door page, a session cookie.
+	callerID int64
 }
 
 // gate parses the door number and decides whether it may be served: when it's open, or to a
-// previewer of this door. With signIn, the caller must be signed in whatever the door. It
+// previewer of this door. With signIn, the caller must be signed in whatever the door. With
+// website, a closed door also takes the website's session cookie, for the door page. It
 // answers the request itself when the door may not be served, and returns ok only when it may.
 //
-// An open door never asks GitHub unless signIn is set, so 06:00 doesn't depend on GitHub.
-func (d Doors) gate(log app.Logger, w http.ResponseWriter, r *http.Request, signIn bool) (a access, ok bool) {
+// An open door never asks GitHub unless signIn is set, so 06:00 doesn't depend on GitHub, and
+// never looks at the cookie.
+func (d Doors) gate(log app.Logger, w http.ResponseWriter, r *http.Request, signIn, website bool) (a access, ok bool) {
 	// The answer changes at the opening, and depends on who asks, so nothing between here
 	// and the caller may keep a copy. The website caches what it renders.
 	w.Header().Set("Cache-Control", "no-store")
@@ -128,50 +136,56 @@ func (d Doors) gate(log app.Logger, w http.ResponseWriter, r *http.Request, sign
 			writeJSONError(w, http.StatusUnauthorized, "sign in first, with: aocn login")
 			return access{}, false
 		}
-		user, ok := d.caller(log, w, r, header)
+		id, ok := d.caller(w, header)
 		if !ok {
 			return access{}, false
 		}
-		a.caller = &user
+		a.callerID = id
+	}
+	// A cookie that's missing, expired or signed with another key is nobody: the door page
+	// works for everyone, so it never answers 401.
+	via := "cli"
+	if !open && a.callerID == 0 && website {
+		if id, ok := sessionUser(r, d.SessionKey, d.now()); ok {
+			a.callerID = id
+			via = "website"
+		}
 	}
 
 	if !open {
-		if a.caller == nil || !d.Previewers.May(a.caller.ID, door) {
+		if a.callerID == 0 || !d.Previewers.May(a.callerID, door) {
 			writeJSON(w, http.StatusNotFound, closedResponse{Door: door, OpensAt: opensAt})
 			return access{}, false
 		}
 		a.preview = true
-		log.Info("Preview", "door", door, "github_user_id", a.caller.ID, "login", a.caller.Login)
+		log.Info("Preview", "door", door, "github_user_id", a.callerID, "via", via)
 	}
 	return a, true
 }
 
-// caller finds out who sent the Authorization header. It answers the request itself when it
-// can't.
-func (d Doors) caller(log app.Logger, w http.ResponseWriter, r *http.Request, header string) (github.User, bool) {
+// caller finds out who sent the Authorization header: the GitHub user ID in the token that
+// aocn login got from this API. Nothing is asked, neither GitHub nor the database. It answers
+// the request itself when the token isn't valid.
+func (d Doors) caller(w http.ResponseWriter, header string) (int64, bool) {
 	token, ok := strings.CutPrefix(header, "Bearer ")
 	if !ok || strings.TrimSpace(token) == "" {
 		writeJSONError(w, http.StatusUnauthorized, "sign in again, with: aocn login")
-		return github.User{}, false
+		return 0, false
 	}
-	user, err := d.Users.User(r.Context(), token)
-	if errors.Is(err, github.ErrBadToken) {
-		writeJSONError(w, http.StatusUnauthorized, "your GitHub sign-in isn't valid anymore. Sign in again, with: aocn login")
-		return github.User{}, false
-	}
+	id, err := session.Verify(d.SessionKey, token, d.now(), session.CLI)
 	if err != nil {
-		log.Error("Asking GitHub who a token belongs to failed", "error", err)
-		writeJSONError(w, http.StatusServiceUnavailable, "GitHub couldn't tell us who you are right now, try again in a few minutes")
-		return github.User{}, false
+		// Expired, signed with an old key, or a GitHub token from aocn before 0.4.0.
+		writeJSONError(w, http.StatusUnauthorized, "your sign-in isn't valid anymore. Sign in again, with: aocn login (and update aocn if it's older than 0.4.0)")
+		return 0, false
 	}
-	return user, true
+	return id, true
 }
 
 // handleDoorPage answers with what the website shows for an open door, and 404 with the
 // opening time before that.
 func handleDoorPage(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, false)
+		a, ok := d.gate(log, w, r, false, true)
 		if !ok {
 			return
 		}
@@ -188,7 +202,7 @@ func handleDoorPage(log app.Logger, d Doors) http.Handler {
 // API streams them itself rather than handing out a link to the bucket.
 func handleDoorBundle(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, false)
+		a, ok := d.gate(log, w, r, false, false)
 		if !ok {
 			return
 		}
@@ -222,7 +236,7 @@ func handleDoorBundle(log app.Logger, d Doors) http.Handler {
 // here, never from the player's folder, so editing them can't make a door pass.
 func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, false)
+		a, ok := d.gate(log, w, r, false, false)
 		if !ok {
 			return
 		}
@@ -257,7 +271,7 @@ type verifyResponse struct {
 // decides itself whether the door passed.
 func handleVerify(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, true)
+		a, ok := d.gate(log, w, r, true, false)
 		if !ok {
 			return
 		}
@@ -282,14 +296,24 @@ func handleVerify(log app.Logger, d Doors) http.Handler {
 			return
 		}
 
-		user := results.User{GitHubID: a.caller.ID, Login: a.caller.Login, AvatarURL: a.caller.AvatarURL}
+		// Saved with the login they had when they signed in; the token only carries the ID.
+		user, err := d.Accounts.Get(r.Context(), a.callerID)
+		if errors.Is(err, users.ErrNotFound) {
+			writeJSONError(w, http.StatusUnauthorized, "sign in again, with: aocn login")
+			return
+		}
+		if err != nil {
+			log.Error("Looking up who sent a result failed", "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "your result couldn't be saved right now, try again in a few minutes")
+			return
+		}
 		result := results.Result{Door: a.door, Passed: passed, Checks: ordered, At: d.now()}
 		if err := d.Results.Record(r.Context(), user, result); err != nil {
 			log.Error("Saving a result failed", "door", a.door, "error", err)
 			writeJSONError(w, http.StatusServiceUnavailable, "your result couldn't be saved, try again in a few minutes")
 			return
 		}
-		writeJSON(w, http.StatusOK, verifyResponse{Door: a.door, Passed: passed, Login: a.caller.Login})
+		writeJSON(w, http.StatusOK, verifyResponse{Door: a.door, Passed: passed, Login: user.Login})
 	})
 }
 
@@ -332,12 +356,27 @@ func matchResults(checks []doors.Check, sent []results.CheckResult) ([]results.C
 // writeMissingDoor answers for an open door whose files can't be read. That's our mistake,
 // never the caller's, so it's logged as an error.
 func writeMissingDoor(log app.Logger, w http.ResponseWriter, door int, what string, err error) {
-	if errors.Is(err, doors.ErrNotFound) {
-		log.Error("An open door was never uploaded", "door", door, "file", what)
-	} else {
+	if !errors.Is(err, doors.ErrNotFound) {
 		log.Error("Reading an open door failed", "door", door, "file", what, "error", err)
+		writeJSONError(w, http.StatusServiceUnavailable, "this door can't be served right now, try again in a few minutes")
+		return
 	}
-	writeJSONError(w, http.StatusServiceUnavailable, "this door can't be served right now, try again in a few minutes")
+	// Mostly a previewer of a door still being built. Only someone who may have the door
+	// gets this far, so saying it isn't there yet tells nobody else anything.
+	log.Error("A door was asked for but never uploaded", "door", door, "file", what)
+	writeJSON(w, http.StatusServiceUnavailable, notReadyResponse{
+		Error:    fmt.Sprintf("door %d isn't ready yet", door),
+		Door:     door,
+		NotReady: true,
+	})
+}
+
+// notReadyResponse answers for a door that may be served but was never uploaded, so the
+// website can say so instead of "try again in a few minutes".
+type notReadyResponse struct {
+	Error    string `json:"error"`
+	Door     int    `json:"door"`
+	NotReady bool   `json:"notReady"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

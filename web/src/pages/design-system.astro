@@ -118,8 +118,8 @@ const spacing: Token[] = [
   { name: 'space-2', usage: 'Inside rows; the mobile door grid gap.' },
   { name: 'space-3', usage: 'Related items; the desktop door grid gap.' },
   { name: 'space-4', usage: 'Card padding; the mobile page edge.' },
-  { name: 'space-6', usage: 'Between blocks inside a section.' },
-  { name: 'space-8', usage: 'Between a section name and its text; small gaps between blocks.' },
+  { name: 'space-6', usage: 'Between blocks inside a section; a feature panel\'s padding on mobile.' },
+  { name: 'space-8', usage: 'Between a section name and its text; small gaps between blocks; a feature panel\'s padding (POLARIS-7\'s assessment on a profile card).' },
   { name: 'space-12', usage: 'The desktop page edge and between sections.' },
 ];
 
@@ -376,6 +376,13 @@ const colorGroups = [
           <li>
             On mobile the header drops <code>// station console</code>: her mark and name are enough. Every nav link
             is a <code>size-touch</code> tap target.
+          </li>
+          <li>
+            Last in the navigation: <code>log in</code>, or <code>@login</code> of whoever is logged in, a link to
+            their card, where they log out. The page asks <code>/api/me</code> after it's shown, so pages stay the same
+            for everyone. <code>log in</code> only shows from door 1's opening; someone already logged in shows before
+            that too. On mobile a long login is cut off with an ellipsis, and her name is left out below 360px (440px
+            when someone is logged in), so the links stay on the same row as her mark.
           </li>
           <li>
             The footer is small and muted: the domain, <code>privacy</code> and <code>imprint</code> on the left, the

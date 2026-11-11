@@ -2,7 +2,7 @@
  * The landing page's structured data (schema.org JSON-LD): the site, so search results can
  * show its name, and the season as an online event. Its dates come from the schedule.
  */
-import { DOOR_COUNT, doorOpensAt } from './doors';
+import { FIRST_DOOR, LAST_DOOR, doorOpensAt } from './doors';
 
 const SITE_URL = 'https://aocn.dev/';
 const SITE_NAME = 'Advent of Cloud Native';
@@ -23,8 +23,8 @@ export function landingStructuredData(description: string, imageUrl: string) {
         description,
         image: imageUrl,
         url: SITE_URL,
-        startDate: doorOpensAt(1).toISOString(),
-        endDate: doorOpensAt(DOOR_COUNT).toISOString(),
+        startDate: doorOpensAt(FIRST_DOOR).toISOString(),
+        endDate: doorOpensAt(LAST_DOOR).toISOString(),
         eventStatus: 'https://schema.org/EventScheduled',
         eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
         location: { '@type': 'VirtualLocation', url: SITE_URL },

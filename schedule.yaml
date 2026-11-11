@@ -12,21 +12,23 @@
 # Nothing about a door's content lives here. Project names stay out of this public
 # repository until their door is published.
 
-# Door 1 first. The number of doors is the length of this list, and each door must open
-# after the one before it.
+# Each door by its number, which is its day in December: door 3 opens on Dec 3, and is
+# /doors/3, `aocn open 3` and doors/03-<tool>/ in the challenges repository. The number is
+# written out rather than worked out from the date, so moving a date for a rehearsal
+# doesn't renumber the door. Doors are listed by number, each opening after the one before.
 doors:
-  - 2026-12-01T06:00:00+01:00
-  - 2026-12-03T06:00:00+01:00
-  - 2026-12-05T06:00:00+01:00
-  - 2026-12-07T06:00:00+01:00
-  - 2026-12-09T06:00:00+01:00
-  - 2026-12-11T06:00:00+01:00
-  - 2026-12-13T06:00:00+01:00
-  - 2026-12-15T06:00:00+01:00
-  - 2026-12-17T06:00:00+01:00
-  - 2026-12-19T06:00:00+01:00
-  - 2026-12-21T06:00:00+01:00
-  - 2026-12-23T06:00:00+01:00
+  1: 2026-12-01T06:00:00+01:00
+  3: 2026-12-03T06:00:00+01:00
+  5: 2026-12-05T06:00:00+01:00
+  7: 2026-12-07T06:00:00+01:00
+  9: 2026-12-09T06:00:00+01:00
+  11: 2026-12-11T06:00:00+01:00
+  13: 2026-12-13T06:00:00+01:00
+  15: 2026-12-15T06:00:00+01:00
+  17: 2026-12-17T06:00:00+01:00
+  19: 2026-12-19T06:00:00+01:00
+  21: 2026-12-21T06:00:00+01:00
+  23: 2026-12-23T06:00:00+01:00
 
 # The "last incident" POLARIS-7's prompt line counts from: Christmas Eve at 06:00 CET.
 # Before the season it is last year's; from the finale on, it is this year's.

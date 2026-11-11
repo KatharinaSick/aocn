@@ -17,28 +17,43 @@ export interface DoorPage {
 }
 
 export type DoorAnswer =
-  | { state: 'open'; page: DoorPage }
+  /** preview: the door isn't open, and the session belongs to a previewer of it. */
+  | { state: 'open'; page: DoorPage; preview: boolean }
   | { state: 'closed'; door: number; opensAt: Date }
   | { state: 'missing' }
+  /** The door may be served (open, or to a previewer), but nothing was uploaded for it yet. */
+  | { state: 'notReady'; door: number }
   /** The door may be open, but the API can't serve it right now: down, or its files unreadable. */
   | { state: 'unavailable' };
 
-/** Asks the API about a door, one of doorCount. An answer that makes no sense throws. */
+/** The session cookie's name, as the API sets it. */
+export const SESSION_COOKIE = 'aocn_session';
+
+/**
+ * Asks the API about a door, if isDoor says there is one. With a session (the visitor's
+ * session cookie), a previewer gets their door before it opens. An answer that makes no
+ * sense throws.
+ */
 export async function fetchDoor(
   apiUrl: string,
   door: string,
-  doorCount: number,
-  fetchFn: typeof fetch = fetch,
+  isDoor: (door: number) => boolean,
+  { session, fetchFn = fetch }: { session?: string; fetchFn?: typeof fetch } = {},
 ): Promise<DoorAnswer> {
   // Only plain door numbers reach the API, so nothing else can be smuggled into its path.
   // The API accepts the same spelling only: 1, never 01. A door that isn't in the schedule
   // is missing without asking, so it's a 404 even while the API is down, never "stuck".
-  if (!/^[1-9][0-9]?$/.test(door) || Number(door) > doorCount) {
+  if (!/^[1-9][0-9]?$/.test(door) || !isDoor(Number(door))) {
     return { state: 'missing' };
   }
   let response: Response;
   try {
-    response = await fetchFn(`${apiUrl}/doors/${door}`, { headers: { Accept: 'application/json' } });
+    // Only the session cookie goes on, none of the visitor's other cookies.
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (session) {
+      headers.Cookie = `${SESSION_COOKIE}=${session}`;
+    }
+    response = await fetchFn(`${apiUrl}/doors/${door}`, { headers });
   } catch {
     return { state: 'unavailable' };
   }
@@ -54,6 +69,9 @@ export function readDoorAnswer(status: number, body: unknown): DoorAnswer {
     }
     return { state: 'missing' };
   }
+  if (status === 503 && b.notReady === true && typeof b.door === 'number') {
+    return { state: 'notReady', door: b.door };
+  }
   if (status >= 500 || status === 429) {
     return { state: 'unavailable' };
   }
@@ -62,6 +80,7 @@ export function readDoorAnswer(status: number, body: unknown): DoorAnswer {
   }
   return {
     state: 'open',
+    preview: b.preview === true,
     page: {
       door: b.door,
       opensAt: new Date(String(b.opensAt)),
@@ -76,33 +95,34 @@ export function readDoorAnswer(status: number, body: unknown): DoorAnswer {
 /** How long an open door's page may stay in Netlify's cache: a late fix shows up after this. */
 export const OPEN_DOOR_CDN_SECONDS = 300;
 
-/** The longest a closed door's answer may stay in Netlify's cache. */
-export const CLOSED_DOOR_CDN_SECONDS = 60;
+/** How long a door that isn't in the schedule may stay in Netlify's cache. */
+export const MISSING_DOOR_CDN_SECONDS = 60;
 
 /**
- * Cache headers for the rendered door page. Browsers always ask again; Netlify keeps a copy.
- * A closed door's copy never outlives its opening, so nobody gets a stale "not found" after
- * 06:00.
+ * Cache headers for the rendered door page. Browsers always ask again; Netlify keeps a copy
+ * of what's the same for everyone.
+ *
+ * A closed door isn't kept: a cached copy would be served to a previewer too, who'd never
+ * reach the function and see their door. A preview is only for the one previewer, so it's
+ * kept nowhere, neither by Netlify nor by the browser.
  */
-export function doorCacheHeaders(answer: DoorAnswer, now: Date): Record<string, string> {
+export function doorCacheHeaders(answer: DoorAnswer): Record<string, string> {
   let seconds: number;
   switch (answer.state) {
     case 'open':
+      if (answer.preview) {
+        return { 'Cache-Control': 'private, no-store', 'Netlify-CDN-Cache-Control': 'no-store' };
+      }
       seconds = OPEN_DOOR_CDN_SECONDS;
       break;
-    case 'closed':
-      seconds = Math.min(CLOSED_DOOR_CDN_SECONDS, Math.floor((answer.opensAt.getTime() - now.getTime()) / 1000));
-      break;
     case 'missing':
-      seconds = CLOSED_DOOR_CDN_SECONDS;
+      seconds = MISSING_DOOR_CDN_SECONDS;
       break;
+    case 'closed':
+    case 'notReady':
     case 'unavailable':
-      // The next request should ask again: it may well work.
-      seconds = 0;
-      break;
-  }
-  if (seconds <= 0) {
-    return { 'Cache-Control': 'no-store' };
+      // The next request should ask again: it may be a previewer's, or work this time.
+      return { 'Cache-Control': 'no-store' };
   }
   return {
     'Cache-Control': 'public, max-age=0, must-revalidate',

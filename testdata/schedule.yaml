@@ -5,9 +5,9 @@
 # Another year and only three doors, so nothing can pass by assuming the real season,
 # and three different offsets, so both sides have to apply them.
 doors:
-  - 2030-12-01T06:00:00+01:00 # 2030-12-01T05:00:00Z
-  - 2030-12-03T05:00:00Z # 2030-12-03T05:00:00Z
-  - 2030-12-04T19:30:00-05:00 # 2030-12-05T00:30:00Z
+  1: 2030-12-01T06:00:00+01:00 # 2030-12-01T05:00:00Z
+  3: 2030-12-03T05:00:00Z # 2030-12-03T05:00:00Z
+  5: 2030-12-04T19:30:00-05:00 # 2030-12-05T00:30:00Z
 
 christmasEve:
   beforeSeason: 2029-12-24T06:00:00+01:00

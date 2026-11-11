@@ -14,9 +14,9 @@ import (
 // There is no CORS layer: the website reaches the API through Netlify's /api/*
 // rewrite and Astro's dev-server proxy, so the browser only ever talks to its own
 // origin. Adding a direct cross-origin caller would mean revisiting that.
-func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors) http.Handler {
+func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors, auth Auth, profiles Profiles) http.Handler {
 	mux := http.NewServeMux()
-	addRoutes(mux, log, subscriptions, doors)
+	addRoutes(mux, log, subscriptions, doors, auth, profiles)
 
 	// otelhttp names the span after the matched route and continues an incoming
 	// traceparent, so requests arriving from the website or the CLI stay on one trace.
@@ -30,12 +30,12 @@ func NewHandler(log app.Logger, subscriptions Subscriptions, doors Doors) http.H
 	return requestLogger(log, handler)
 }
 
-func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, doors Doors) {
+func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, doors Doors, auth Auth, profiles Profiles) {
 	mux.Handle("GET /health", handleHealth())
-	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow)(handleSubscribe(log, subscriptions)))
+	mux.Handle("POST /subscribe", limitByIP(ipLimit, ipWindow, tooManySignups)(handleSubscribe(log, subscriptions)))
 	// Confirming is limited too: a valid token can be replayed until it expires, and
 	// every replay costs a database row and two Resend calls.
-	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow)(handleConfirmSubscription(log, subscriptions)))
+	mux.Handle("POST /subscribe/confirm", limitByIP(ipLimit, ipWindow, tooManySignups)(handleConfirmSubscription(log, subscriptions)))
 	// Neither door endpoint is limited. The page is asked for by the website, from Netlify's
 	// few addresses. Bundles are small, and many players may share an address (a workshop,
 	// Codespaces), all opening the door at 06:00; a limit by IP would turn them away first.
@@ -46,6 +46,20 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	// be verified more than a few times a minute, so a limit per user is the first thing to
 	// add if anyone floods it.
 	mux.Handle("POST /doors/{door}/verify", handleVerify(log, doors))
+	// Finishing a login asks GitHub, whatever the request carries: a made-up code or token
+	// still costs a call, and enough bad ones from our address could get it blocked there,
+	// turning everyone's login away. So both are limited per IP, generously, since a workshop
+	// logs in together from one address, and all together, since a caller going around
+	// Netlify can make up any IP. Starting a login and logging out ask nobody.
+	githubCalls := limitAll(githubCallLimit, githubCallWindow, tooManyLogins)
+	byIP := limitByIP(loginIPLimit, loginIPWindow, tooManyLogins)
+	mux.Handle("GET /auth/github/login", handleLogin(auth))
+	mux.Handle("GET /auth/github/callback", byIP(githubCalls(handleCallback(log, auth))))
+	mux.Handle("POST /auth/logout", handleLogout(auth))
+	mux.Handle("POST /auth/cli", byIP(githubCalls(handleCLILogin(log, auth))))
+	mux.Handle("GET /me", handleMe(log, auth))
+	// Asked by the website's function, from Netlify's few addresses, so not limited by IP.
+	mux.Handle("GET /users/{login}", handleProfile(log, profiles))
 }
 
 // spanName labels spans by the matched route pattern (e.g. "GET /health"). When no

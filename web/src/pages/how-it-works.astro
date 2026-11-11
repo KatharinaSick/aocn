@@ -5,18 +5,18 @@
 import NotifyRow from '../components/NotifyRow.astro';
 import Keycap from '../components/Keycap.vue';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { DOOR_COUNT, doorOpensAt, formatStationClock, formatStationDay } from '../lib/doors';
+import { DOOR_COUNT, DOOR_NUMBERS, FIRST_DOOR, LAST_DOOR, doorOpensAt, formatStationClock, formatStationDay } from '../lib/doors';
 import { GLOBAL_KEYS } from '../lib/keys';
 
-const firstDoor = doorOpensAt(1);
-const lastDoor = doorOpensAt(DOOR_COUNT);
+const firstDoor = doorOpensAt(FIRST_DOOR);
+const lastDoor = doorOpensAt(LAST_DOOR);
 const day = (door: number) => formatStationDay(doorOpensAt(door)).replace(/^dec /, '');
 const year = firstDoor.getUTCFullYear();
 
 const schedule = `every other day · ${formatStationDay(firstDoor)} -> ${formatStationDay(lastDoor)} · ${formatStationClock(firstDoor)}`;
 const glance = [
-  { label: 'when', value: `${formatStationDay(firstDoor)} -> ${day(DOOR_COUNT)}, ${year}` },
-  { label: 'doors', value: `dec ${day(1)}, ${day(2)}, ${day(3)} … ${day(DOOR_COUNT)} at ${formatStationClock(firstDoor)}` },
+  { label: 'when', value: `${formatStationDay(firstDoor)} -> ${day(LAST_DOOR)}, ${year}` },
+  { label: 'doors', value: `dec ${DOOR_NUMBERS.slice(0, 3).map(day).join(', ')} … ${day(LAST_DOOR)} at ${formatStationClock(firstDoor)}` },
   // The WHY section in one line.
   { label: 'why', value: "practice what AI can't decide" },
   { label: 'open source', value: 'because we love it' },

@@ -10,16 +10,31 @@ import (
 )
 
 // limitByIP allows each client IP limit requests per window, counted in memory with
-// a sliding window. Every Cloud Run instance counts on its own and a restart forgets,
-// which is fine for what this is for: slowing down careless scripts. The limit that
-// protects inboxes is the per-address one, which is kept in the database.
-func limitByIP(limit int, window time.Duration) func(http.Handler) http.Handler {
+// a sliding window, and answers with tooMany past it. Every Cloud Run instance counts on
+// its own and a restart forgets, which is fine for what this is for: slowing down careless
+// scripts. The limit that protects inboxes is the per-address one, which is kept in the
+// database.
+func limitByIP(limit int, window time.Duration, tooMany http.HandlerFunc) func(http.Handler) http.Handler {
 	return httprate.LimitBy(limit, window,
 		func(r *http.Request) (string, error) { return clientIP(r), nil },
-		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "too many signups from here, try again later", http.StatusTooManyRequests)
-		}),
+		httprate.WithLimitHandler(tooMany),
 	)
+}
+
+// limitAll allows limit requests per window from everyone together, per instance. Unlike
+// limitByIP it can't be dodged with a made-up X-Forwarded-For, so it's what bounds work
+// that costs something outside the API. One limiter shared by several routes counts them
+// together.
+func limitAll(limit int, window time.Duration, tooMany http.HandlerFunc) func(http.Handler) http.Handler {
+	return httprate.LimitBy(limit, window,
+		func(*http.Request) (string, error) { return "all", nil },
+		httprate.WithLimitHandler(tooMany),
+	)
+}
+
+// tooManySignups answers a client past the signup limit.
+func tooManySignups(w http.ResponseWriter, _ *http.Request) {
+	http.Error(w, "too many signups from here, try again later", http.StatusTooManyRequests)
 }
 
 // clientIP is the address the request came from, as the proxies in front report it:

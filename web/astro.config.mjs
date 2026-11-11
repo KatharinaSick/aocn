@@ -54,6 +54,9 @@ export default defineConfig({
   // Locally, /api/* goes to the API from `devbox run api`, the way netlify.toml sends it
   // to Cloud Run in production: same prefix, stripped before it reaches the API.
   vite: {
+    // resvg's WebAssembly, built into the share image's function with ?inline
+    // (src/pages/u/[login]/card.png.ts), so it needs no file next to it at runtime.
+    assetsInclude: ['**/*.wasm'],
     define: {
       'import.meta.env.COUNT_VISITS': JSON.stringify(countVisits),
       'import.meta.env.API_URL': JSON.stringify(apiUrl),

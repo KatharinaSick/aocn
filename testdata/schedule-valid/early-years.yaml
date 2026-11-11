@@ -3,8 +3,8 @@
 # order. Years before 100, which JavaScript's Date.UTC would read as 1900 to 1999, and a
 # Feb 29 in one of them.
 doors:
-  - 0050-12-01T06:00:00+01:00
-  - 0052-02-29T06:00:00+01:00
+  1: 0050-12-01T06:00:00+01:00
+  3: 0052-02-29T06:00:00+01:00
 christmasEve:
   beforeSeason: 0049-12-24T06:00:00+01:00
   finale: 0052-12-24T06:00:00+01:00

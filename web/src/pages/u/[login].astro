@@ -1,0 +1,374 @@
+---
+// Someone's profile card: who they are and which doors they fixed, from GET /users/{login}.
+//
+// Rendered on each request, because a login isn't known until someone visits and the link
+// preview has to show real progress (see AGENTS.md → Rendering). No logic here beyond
+// showing the answer: the API decides which doors count.
+//
+// The card is the same for everyone, so Netlify caches it. "log out" is only on your own
+// card, and that's decided in the browser after the page is shown.
+import Button from '../../components/Button.astro';
+import PolaFace from '../../components/PolaFace.astro';
+import TextPage from '../../components/TextPage.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { DOOR_COUNT, DOOR_NUMBERS, formatStationDay, formatStationDayLong, isDoorOpen } from '../../lib/doors';
+import { assess, doorCells, fetchProfile, profileCacheHeaders, profileLine } from '../../lib/profile';
+
+export const prerender = false;
+
+const answer = await fetchProfile(import.meta.env.API_URL, Astro.params.login ?? '');
+const cacheHeaders = profileCacheHeaders(answer);
+if (answer.state === 'missing') {
+  // An empty 404 makes Astro answer with the prerendered 404 page.
+  return new Response(null, { status: 404, headers: cacheHeaders });
+}
+if (answer.state === 'unavailable') {
+  Astro.response.status = 503;
+  Astro.response.headers.set('Retry-After', '120');
+}
+for (const [name, value] of Object.entries(cacheHeaders)) {
+  Astro.response.headers.set(name, value);
+}
+
+const profile = answer.state === 'found' ? answer.profile : undefined;
+const cells = profile ? doorCells(profile.solved, DOOR_NUMBERS, isDoorOpen, new Date()) : [];
+const fixed = cells.filter((c) => c.state === 'fixed').length;
+const assessment = assess(fixed, DOOR_COUNT);
+const cellLabel = { fixed: 'fixed', open: 'open, not fixed yet', closed: 'not open yet' };
+const doorNumber = (door: number) => String(door).padStart(2, '0');
+---
+
+{
+  profile ? (
+    <BaseLayout
+      title={`@${profile.login}`}
+      description={`POLARIS-7 has assessed @${profile.login} as ${assessment.title}: ${fixed} of ${DOOR_COUNT} doors fixed on Advent of Cloud Native.`}
+      image={{
+        src: `/u/${profile.login}/card.png`,
+        alt: `POLARIS-7 has assessed @${profile.login} as ${assessment.title}. ${fixed} of ${DOOR_COUNT} doors fixed.`,
+      }}
+      pola={profileLine(cells)}
+    >
+      <TextPage command="$ whoami" title={`@${profile.login}`}>
+        <div class="profile">
+          <p class="profileMeta">
+            winter-over engineer · joined{' '}
+            <time datetime={profile.since.toISOString()} aria-label={formatStationDayLong(profile.since)}>
+              {formatStationDay(profile.since)}
+            </time>{' '}
+            ·{' '}
+            <a href={`https://github.com/${profile.login}`} target="_blank" rel="noopener">
+              github.com/{profile.login}
+            </a>
+          </p>
+
+          <section class="profileAssessment" aria-labelledby="profileAssessmentTitle">
+            <PolaFace mood={assessment.mood} size="large" label={null} />
+            <div class="profileAssessmentText">
+              <p class="profileAssessmentLead">POLARIS-7 has assessed {profile.login} as</p>
+              <h2 class="profileAssessmentTitle" id="profileAssessmentTitle">
+                {assessment.title}
+              </h2>
+              <p>{assessment.line}</p>
+              <p class="profileAssessmentNext">
+                {assessment.next
+                  ? `next: ${assessment.next.title} · ${assessment.next.more} more ${assessment.next.more === 1 ? 'door' : 'doors'}`
+                  : 'nothing left to fix'}
+              </p>
+            </div>
+          </section>
+
+          <section class="profileDoorsSection" aria-labelledby="profileDoorsTitle">
+            <h2 class="profileDoorsTitle" id="profileDoorsTitle">
+              <span aria-hidden="true">$ ls doors/</span>
+              <span class="srOnly">doors</span>
+              <span class="profileDoorsCount">
+                {fixed} / {DOOR_COUNT} fixed
+              </span>
+            </h2>
+            <ol class="profileDoors">
+              {cells.map((cell) => {
+                const inner = (
+                  <>
+                    <span class="profileDoorNumber" aria-hidden="true">
+                      {doorNumber(cell.door)}
+                    </span>
+                    <span class="profileDoorIcon" aria-hidden="true">
+                      {cell.state === 'fixed' && '✓'}
+                      {cell.state === 'open' && '○'}
+                      {cell.state === 'closed' && (
+                        <svg width="10" height="12" viewBox="0 0 10 12" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <rect x="1" y="5" width="8" height="6" rx="1" />
+                          <path d="M3 5V3.5a2 2 0 0 1 4 0V5" />
+                        </svg>
+                      )}
+                    </span>
+                    <span class="srOnly">
+                      door {cell.door}: {cellLabel[cell.state]}
+                    </span>
+                  </>
+                );
+                return (
+                  <li>
+                    {cell.state === 'closed' ? (
+                      <span class={`profileDoor profileDoor-${cell.state}`}>{inner}</span>
+                    ) : (
+                      <a class={`profileDoor profileDoor-${cell.state}`} href={`/doors/${cell.door}`}>
+                        {inner}
+                      </a>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+
+          <!-- Only on your own card: sharing it (the link previews as the share image), and
+               logging out. Shown by the script below. -->
+          <div class="profileOwn" data-login={profile.login} hidden>
+            <section class="profileShare" aria-label="share your card">
+              <div class="profileShareActions">
+                <Button variant="primary" class="profileShareCopy" data-url={`/u/${profile.login}`}>copy link</Button>
+                <Button href={`/u/${profile.login}/card.png`} download={`aocn-${profile.login}.png`}>download image</Button>
+                <span class="profileShareStatus" role="status"></span>
+              </div>
+            </section>
+            <p>
+              <button class="profileLogOut" type="button">log out</button>
+            </p>
+          </div>
+        </div>
+      </TextPage>
+    </BaseLayout>
+  ) : (
+    <BaseLayout
+      title="profile"
+      description="This profile can't be shown right now."
+      noindex
+      pola={{ mood: 'annoyed', message: 'Something is broken that is not you. For once.' }}
+    >
+      <TextPage command="$ whoami" title="stuck">
+        <p>This profile can't be shown right now. Try again in a few minutes.</p>
+        <p>
+          <a href="/">back home</a>
+        </p>
+      </TextPage>
+    </BaseLayout>
+  )
+}
+
+<script>
+  import { fetchMe } from '../../lib/account';
+
+  // Only on your own card. Logins ignore case on GitHub.
+  const own = document.querySelector<HTMLElement>('.profileOwn');
+  if (own) {
+    fetchMe().then((me) => {
+      if (me && me.login.toLowerCase() === own.dataset.login?.toLowerCase()) {
+        own.hidden = false;
+      }
+    });
+    own.querySelector('.profileLogOut')?.addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+      window.location.reload();
+    });
+    const copy = own.querySelector<HTMLElement>('.profileShareCopy');
+    const status = own.querySelector<HTMLElement>('.profileShareStatus');
+    copy?.addEventListener('click', async () => {
+      const url = new URL(copy.dataset.url ?? '/', window.location.origin).href;
+      try {
+        await navigator.clipboard.writeText(url);
+        if (status) status.textContent = 'copied';
+      } catch {
+        // No clipboard (an old browser, or permission denied): show the link to copy by hand.
+        if (status) status.textContent = url;
+      }
+    });
+  }
+</script>
+
+<style>
+  /* The blocks of the card are sections: who, her verdict, the doors. */
+  .profile {
+    display: grid;
+    gap: var(--space-12);
+  }
+
+  /* Brighter than muted: at tablet widths this line sits on the aurora. */
+  .profileMeta {
+    color: var(--color-text-soft);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  /* The link sits on the brightest part of the aurora at 1024px. */
+  .profileMeta a {
+    color: var(--color-text);
+  }
+
+  /* A feature panel: more padding than a card, since the page is looked at, not read. */
+  .profileAssessment {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding: var(--space-8);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-screen);
+    background: var(--color-panel-glass);
+  }
+
+  .profileAssessmentText {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .profileAssessmentLead,
+  .profileAssessmentNext {
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  /* Two classes, so these win over TextPage's section headings. */
+  .profileAssessment .profileAssessmentTitle {
+    margin: 0;
+    padding: 0;
+    border: none;
+    text-transform: none;
+    color: var(--color-aurora);
+    font-size: var(--font-size-title);
+    line-height: var(--line-height-title);
+    letter-spacing: var(--letter-spacing-title);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .profileDoorsSection {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .profileDoorsSection .profileDoorsTitle {
+    margin: 0;
+    padding: 0;
+    border: none;
+    letter-spacing: normal;
+    text-transform: none;
+    display: flex;
+    justify-content: space-between;
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+    font-weight: var(--font-weight-regular);
+  }
+
+  .profileDoorsCount {
+    color: var(--color-text);
+  }
+
+  .profileDoors {
+    display: grid;
+    /* Two rows of six on phones, all doors in one row from tablets up. */
+    grid-template-columns: repeat(6, 1fr);
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (min-width: 800px) {
+    .profileDoors {
+      grid-template-columns: repeat(12, 1fr);
+    }
+  }
+
+  @media (max-width: 799px) {
+    .profileDoors {
+      gap: var(--space-2);
+    }
+  }
+
+  .profileDoor {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-1);
+    padding: var(--space-4) 0;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-screen);
+    background: var(--color-panel);
+    color: var(--color-text);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+    font-weight: var(--font-weight-bold);
+    text-decoration: none;
+  }
+
+  a.profileDoor:hover {
+    border-color: var(--color-aurora);
+  }
+
+  .profileDoorIcon {
+    display: flex;
+    align-items: center;
+    /* One line of text tall, whether it holds a character or the lock. */
+    height: 1lh;
+    font-weight: var(--font-weight-regular);
+  }
+
+  .profileDoor-fixed {
+    border-color: var(--color-aurora);
+    background: var(--color-panel-new);
+    box-shadow: var(--glow-new);
+    color: var(--color-aurora);
+  }
+
+  .profileDoor-closed {
+    border-color: var(--color-line);
+    border-style: dashed;
+    color: var(--color-muted);
+    font-weight: var(--font-weight-regular);
+  }
+
+  .profileOwn:not([hidden]) {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .profileShareActions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .profileShareStatus {
+    color: var(--color-aurora);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+    overflow-wrap: anywhere;
+  }
+
+  .profileLogOut {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: var(--space-1);
+    cursor: pointer;
+  }
+
+  .profileLogOut:hover {
+    color: var(--color-aurora);
+  }
+
+  /* Her face above the words, where they'd be squeezed next to it. */
+  @media (max-width: 599px) {
+    .profileAssessment {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-6);
+      padding: var(--space-6);
+    }
+  }
+</style>

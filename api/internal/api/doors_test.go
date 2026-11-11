@@ -16,16 +16,18 @@ import (
 	"github.com/katharinasick/aocn/api/internal/github"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/session"
+	"github.com/katharinasick/aocn/api/internal/users"
 )
 
 var (
 	door1OpensAt = time.Date(2026, 12, 1, 5, 0, 0, 0, time.UTC)
-	door2OpensAt = time.Date(2026, 12, 3, 5, 0, 0, 0, time.UTC)
+	door3OpensAt = time.Date(2026, 12, 3, 5, 0, 0, 0, time.UTC)
 )
 
 const testSchedule = `doors:
-  - 2026-12-01T06:00:00+01:00
-  - 2026-12-03T06:00:00+01:00
+  1: 2026-12-01T06:00:00+01:00
+  3: 2026-12-03T06:00:00+01:00
 christmasEve:
   beforeSeason: 2025-12-24T06:00:00+01:00
   finale: 2026-12-24T06:00:00+01:00
@@ -57,47 +59,79 @@ var uploaded = memoryStorage{
 	"doors/01/page.yaml":     "title: First\nstory: The story.\n",
 	"doors/01/bundle.tar.gz": "bundle 1",
 	"doors/01/checks.yaml":   "- ready: [first-ns]\n- job: first-ns/cronjob/first-job\n",
-	"doors/02/page.yaml":     "title: Second\nstory: Secret.\n",
-	"doors/02/bundle.tar.gz": "bundle 2",
-	"doors/02/checks.yaml":   "- ready: [secret-ns]\n- job: secret-ns/cronjob/secret-job\n",
+	"doors/03/page.yaml":     "title: Second\nstory: Secret.\n",
+	"doors/03/bundle.tar.gz": "bundle 3",
+	"doors/03/checks.yaml":   "- ready: [secret-ns]\n- job: secret-ns/cronjob/secret-job\n",
 }
 
 // Everything a closed door must never give away, from uploaded.
 var secrets = []string{"First", "The story", "Second", "Secret", "bundle", "first-ns", "secret-ns"}
 
-// Tokens the fake GitHub knows. The previewer gets every door early, the door 2 previewer
-// only door 2, the player none.
-const (
-	previewerToken      = "previewer-token"
-	door2PreviewerToken = "door2-previewer-token"
-	playerToken         = "player-token"
-)
-
+// Who's in the tests. The previewer gets every door early, the door 3 previewer only door 3,
+// the player none.
 var (
 	previewer      = github.User{ID: 7, Login: "previewer", AvatarURL: "https://example.com/7.png"}
-	door2Previewer = github.User{ID: 9, Login: "door2-previewer", AvatarURL: "https://example.com/9.png"}
+	door3Previewer = github.User{ID: 9, Login: "door3-previewer", AvatarURL: "https://example.com/9.png"}
 	player         = github.User{ID: 8, Login: "player", AvatarURL: "https://example.com/8.png"}
 )
 
-// fakeUsers is GitHub: it knows two tokens, counts how often it's asked, and can be down.
-type fakeUsers struct {
+// Their tokens, as aocn login gets them from the API.
+var (
+	previewerToken      = cliToken(previewer.ID)
+	door3PreviewerToken = cliToken(door3Previewer.ID)
+	playerToken         = cliToken(player.ID)
+)
+
+// cliToken signs a CLI token for the user, valid for every moment the tests ask at.
+func cliToken(githubUserID int64) string {
+	token, err := session.Sign(sessionKey, githubUserID, door1OpensAt.Add(-30*24*time.Hour), session.CLI)
+	if err != nil {
+		panic(err)
+	}
+	return token
+}
+
+// GitHub tokens the fake GitHub knows, for logging in on the website and with aocn login.
+const (
+	githubPlayerToken = "gho_player"
+)
+
+// fakeGitHub is GitHub: it knows the player's token, counts how often it's asked, and can be
+// down.
+type fakeGitHub struct {
 	asked int
 	down  bool
 }
 
-func (f *fakeUsers) User(_ context.Context, token string) (github.User, error) {
+func (f *fakeGitHub) User(_ context.Context, token string) (github.User, error) {
 	f.asked++
 	switch {
 	case f.down:
 		return github.User{}, errors.New("GitHub is down")
-	case token == previewerToken:
-		return previewer, nil
-	case token == door2PreviewerToken:
-		return door2Previewer, nil
-	case token == playerToken:
+	case token == githubPlayerToken:
 		return player, nil
 	}
 	return github.User{}, github.ErrBadToken
+}
+
+// fakeAccounts is the database of users: it knows everyone above, counts how often it's
+// asked, and can be down.
+type fakeAccounts struct {
+	asked int
+	down  bool
+}
+
+func (f *fakeAccounts) Get(_ context.Context, id int64) (users.User, error) {
+	f.asked++
+	if f.down {
+		return users.User{}, errors.New("database is down")
+	}
+	for _, u := range []github.User{previewer, door3Previewer, player} {
+		if u.ID == id {
+			return users.User{GitHubID: u.ID, Login: u.Login, AvatarURL: u.AvatarURL}, nil
+		}
+	}
+	return users.User{}, users.ErrNotFound
 }
 
 // fakeResults keeps what was recorded.
@@ -107,11 +141,11 @@ type fakeResults struct {
 }
 
 type recorded struct {
-	user   results.User
+	user   users.User
 	result results.Result
 }
 
-func (f *fakeResults) Record(_ context.Context, user results.User, result results.Result) error {
+func (f *fakeResults) Record(_ context.Context, user users.User, result results.Result) error {
 	if f.err != nil {
 		return f.err
 	}
@@ -121,8 +155,8 @@ func (f *fakeResults) Record(_ context.Context, user results.User, result result
 
 type testAPI struct {
 	http.Handler
-	users   *fakeUsers
-	results *fakeResults
+	accounts *fakeAccounts
+	results  *fakeResults
 }
 
 func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
@@ -131,20 +165,21 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := testAPI{users: &fakeUsers{}, results: &fakeResults{}}
+	a := testAPI{accounts: &fakeAccounts{}, results: &fakeResults{}}
 	a.Handler = NewHandler(nopLogger{}, Subscriptions{}, Doors{
 		Schedule: sched,
 		Storage:  storage,
 		Pages:    &doors.Pages{Storage: storage},
 		Checks:   &doors.Checks{Storage: storage},
-		Users:    a.users,
+		Accounts: a.accounts,
 		Previewers: app.Previewers{
 			previewer.ID:      {All: true},
-			door2Previewer.ID: {Doors: map[int]bool{2: true}},
+			door3Previewer.ID: {Doors: map[int]bool{3: true}},
 		},
-		Results: a.results,
-		Now:     func() time.Time { return now },
-	})
+		Results:    a.results,
+		SessionKey: sessionKey,
+		Now:        func() time.Time { return now },
+	}, Auth{}, Profiles{})
 	return a
 }
 
@@ -202,17 +237,17 @@ func TestClosedDoorsServeNothing(t *testing.T) {
 }
 
 // Every endpoint that hands out a door's content, for both doors.
-var closedPaths = []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/2", "/doors/2/bundle", "/doors/2/checks"}
+var closedPaths = []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/3", "/doors/3/bundle", "/doors/3/checks"}
 
 func TestClosedDoorSaysWhenItOpens(t *testing.T) {
-	for _, path := range []string{"/doors/2", "/doors/2/bundle", "/doors/2/checks"} {
+	for _, path := range []string{"/doors/3", "/doors/3/bundle", "/doors/3/checks"} {
 		rec := get(doorsAt(t, door1OpensAt, uploaded), path)
 		var body closedResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
-		if body.Door != 2 || !body.OpensAt.Equal(door2OpensAt) {
-			t.Errorf("%s: got %+v, want door 2 opening at %v", path, body, door2OpensAt)
+		if body.Door != 3 || !body.OpensAt.Equal(door3OpensAt) {
+			t.Errorf("%s: got %+v, want door 3 opening at %v", path, body, door3OpensAt)
 		}
 	}
 }
@@ -263,14 +298,15 @@ func TestOnlyOpenDoorsAreServed(t *testing.T) {
 	if rec := get(h, "/doors/1"); rec.Code != http.StatusOK {
 		t.Errorf("door 1: status %d", rec.Code)
 	}
-	if rec := get(h, "/doors/2"); rec.Code != http.StatusNotFound {
-		t.Errorf("door 2: status %d", rec.Code)
+	if rec := get(h, "/doors/3"); rec.Code != http.StatusNotFound {
+		t.Errorf("door 3: status %d", rec.Code)
 	}
 }
 
 func TestUnknownDoors(t *testing.T) {
-	h := doorsAt(t, door2OpensAt.Add(time.Hour), uploaded)
-	for _, path := range []string{"/doors/0", "/doors/3", "/doors/-1", "/doors/one", "/doors/01x", "/doors/3/bundle", "/doors/3/checks",
+	h := doorsAt(t, door3OpensAt.Add(time.Hour), uploaded)
+	for _, path := range []string{"/doors/0", "/doors/2", "/doors/4", "/doors/-1", "/doors/one", "/doors/01x", "/doors/2/bundle", "/doors/2/checks",
+		// 2 and 4 are days without a door.
 		// One spelling per door: these all parse as 1, which is open.
 		"/doors/01", "/doors/+1", "/doors/1.0", "/doors/%201", "/doors/01/bundle", "/doors/+1/bundle", "/doors/01/checks"} {
 		rec := get(h, path)
@@ -286,9 +322,34 @@ func TestUnknownDoors(t *testing.T) {
 func TestOpenDoorNotUploaded(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, memoryStorage{})
 	for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks"} {
-		if rec := get(h, path); rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("%s: status %d, want 503", path, rec.Code)
+		rec := get(h, path)
+		var body notReadyResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s: status %d, %v", path, rec.Code, err)
 		}
+		if !body.NotReady || body.Door != 1 || body.Error != "door 1 isn't ready yet" {
+			t.Errorf("%s: got %+v", path, body)
+		}
+	}
+}
+
+// A door that can't be read is an outage, not a door that isn't ready.
+func TestOpenDoorUnreadable(t *testing.T) {
+	h := doorsAt(t, door1OpensAt, brokenStorage{})
+	rec := get(h, "/doors/1")
+	if rec.Code != http.StatusServiceUnavailable || strings.Contains(rec.Body.String(), "notReady") {
+		t.Errorf("status %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// A closed door says nothing about whether it's uploaded to anyone but its previewers.
+func TestClosedDoorNotUploadedIsJustClosed(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(-time.Hour), memoryStorage{})
+	if rec := get(h, "/doors/1"); rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "notReady") {
+		t.Errorf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := getAs(h, "/doors/1", previewerToken); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "notReady") {
+		t.Errorf("previewer: status %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
