@@ -16,7 +16,7 @@
     "social-image": "node scripts/social-image.ts"
   },
   "dependencies": {
-    "@astrojs/netlify": "^8.2.6",
+    "@astrojs/netlify": "^8.2.13",
     "@astrojs/sitemap": "^3.7.4",
     "@astrojs/vue": "^7.0.3",
     "@fontsource/jetbrains-mono": "^5.3.0",
