@@ -84,6 +84,10 @@ func TestProfileShowsADoorOnlyOnceItsOpen(t *testing.T) {
 	if len(got) != 2 || got[0].Door != 1 || got[1].Door != 3 {
 		t.Errorf("once door 3 is open: %+v", got)
 	}
+	// Solved the day before, but the public card can't say so: that would tell who previews.
+	if len(got) == 2 && !got[1].SolvedAt.Equal(door3OpensAt) {
+		t.Errorf("door 3 solved at %s, want its opening %s", got[1].SolvedAt, door3OpensAt)
+	}
 }
 
 func TestProfileWithoutDoorsIsAnEmptyList(t *testing.T) {

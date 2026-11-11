@@ -62,13 +62,20 @@ type profileResponse struct {
 
 // solvedDoors are the doors to show as fixed at now: open, and passed at least once, by
 // door. A previewer's pass from before the opening counts, but only once the door is open,
-// so a card never shows a door early, and nobody has to verify again on the day.
+// so a card never shows a door early, and nobody has to verify again on the day. It counts
+// as solved at the opening: the card is public, and an earlier time would tell everyone who
+// previews.
 func solvedDoors(sched *schedule.Schedule, passes map[int]time.Time, now time.Time) []solvedDoor {
 	solved := []solvedDoor{}
 	for door, at := range passes {
-		if open, err := sched.IsOpen(door, now); err == nil && open {
-			solved = append(solved, solvedDoor{Door: door, SolvedAt: at})
+		opensAt, err := sched.OpensAt(door)
+		if err != nil || now.Before(opensAt) {
+			continue
 		}
+		if at.Before(opensAt) {
+			at = opensAt
+		}
+		solved = append(solved, solvedDoor{Door: door, SolvedAt: at})
 	}
 	sort.Slice(solved, func(i, j int) bool { return solved[i].Door < solved[j].Door })
 	return solved
