@@ -6,7 +6,7 @@
 // open; this page only shows what it gets. A door that isn't open answers with exactly the
 // 404 page, like a door that doesn't exist.
 //
-// A closed door shows when it opens, and how previewers log in: before Dec 1 that's the only
+// A closed door says when it opens, and how previewers log in: before Dec 1 that's the only
 // place the site offers logging in. It says nothing about the door but its number and its
 // opening time, which the schedule already makes public. A door that isn't in the schedule
 // is the 404 page.
@@ -15,7 +15,6 @@
 // come back in a few minutes, with a 503 and no caching. That tells nobody more than the 404
 // would: the API only fails this way for a door that's open, or for every door at once. Only
 // doors in the schedule get there; any other number is a 404 without asking the API.
-import Countdown from '../../components/Countdown.astro';
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { loginHref } from '../../lib/account';
@@ -83,29 +82,19 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
       title={`door ${number}`}
       description={`Door ${number} opens ${formatStationTime(closed.opensAt)}.`}
       noindex
-      pola={{ mood: 'neutral', message: 'This door opens when it opens. Not a minute earlier.' }}
+      pola={{ mood: 'annoyed', message: 'Still locked. Refreshing the page will not change that.' }}
     >
-      <!-- Laid out like the landing page: the same fade, title and countdown. -->
-      <div class="doorFade" aria-hidden="true"></div>
-      <section class="doorHero">
-        <div class="doorIntro">
-          <p class="doorCommand">$ aocn open {closed.door}</p>
-          <h1 class="doorTitle">
-            door {number}<span class="doorUnderscore" aria-hidden="true">_</span>
-          </h1>
-          <p class="doorLead">Not open yet. The crew is still breaking it.</p>
-        </div>
-
-        <div>
-          <Countdown door={closed.door} />
-          <p class="doorPreview" data-door={closed.door}>
-            <span class="doorPreviewLogIn">
-              previewing this door? <a href={loginHref(`/doors/${closed.door}`)}>log in</a>
-            </span>
-            <span class="doorPreviewLoggedIn" hidden></span>
-          </p>
-        </div>
-      </section>
+      <TextPage command={`$ aocn open ${closed.door}`} title={`door ${number}`}>
+        <p class="doorOpens">
+          opens <time datetime={closed.opensAt.toISOString()}>{formatStationTime(closed.opensAt)}</time>
+        </p>
+        <p class="doorPreview">
+          <span class="doorPreviewLogIn">
+            previewing this door? <a href={loginHref(`/doors/${closed.door}`)}>log in</a>
+          </span>
+          <span class="doorPreviewLoggedIn" hidden></span>
+        </p>
+      </TextPage>
     </BaseLayout>
   ) : (
     <BaseLayout
@@ -142,59 +131,14 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 </script>
 
 <style>
-  /* The closed door follows the landing page (pages/index.astro): keep the two in step. */
-  .doorFade {
-    position: absolute;
-    z-index: -1;
-    top: 380px;
-    left: 0;
-    right: 0;
-    height: 280px;
-    background: linear-gradient(180deg, transparent 0%, var(--color-bg) 85%);
-    pointer-events: none;
-  }
-
-  .doorHero {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-evenly;
-    gap: var(--space-12);
-    padding: var(--space-12) var(--page-gutter);
-  }
-
-  .doorIntro {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .doorCommand {
-    color: var(--color-muted);
-    font-size: var(--font-size-small);
-    line-height: var(--line-height-small);
-  }
-
-  .doorTitle {
-    font-size: var(--font-size-display);
-    line-height: var(--line-height-display);
-    letter-spacing: var(--letter-spacing-display);
-    font-weight: var(--font-weight-bold);
-  }
-
-  .doorUnderscore {
-    color: var(--color-aurora);
-  }
-
-  .doorLead {
-    max-width: 50ch;
-    color: var(--color-text-soft);
+  .doorOpens {
+    color: var(--color-text);
     font-size: var(--font-size-lead);
     line-height: var(--line-height-lead);
   }
 
   .doorPreview {
-    margin-top: var(--space-4);
-    color: var(--color-muted);
+    color: var(--color-text-soft);
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
   }
