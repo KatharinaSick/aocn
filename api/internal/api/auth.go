@@ -35,8 +35,9 @@ const (
 	// loginTakesAtMost is how long the state and return cookies last.
 	loginTakesAtMost = 10 * time.Minute
 
-	// Logins finished per IP: enough for a workshop behind one address, not for a script.
-	loginIPLimit  = 30
+	// Logins finished per IP: enough for a workshop or a talk behind one wifi, not for a
+	// script. The limit for everyone together below is what really bounds GitHub calls.
+	loginIPLimit  = 100
 	loginIPWindow = 10 * time.Minute
 	// Logins finished by everyone together, per instance: far more than real people do, and
 	// few enough that GitHub never sees a flood from us.
