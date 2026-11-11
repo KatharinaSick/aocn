@@ -77,7 +77,7 @@ func main() {
 		flush(log, shutdownOTel)
 		os.Exit(1)
 	}
-	githubUsers := github.NewUsers()
+	githubUsers := github.NewUsers(cfg.GitHub.ClientID, cfg.GitHub.ClientSecret)
 	userStore := users.NewStore(pool)
 	resultStore := results.NewStore(pool)
 	doorsAPI := api.Doors{
@@ -183,10 +183,13 @@ func subscriptions(log app.Logger, cfg *app.Config, store api.Store) api.Subscri
 func auth(log app.Logger, cfg *app.Config, githubUsers *github.Users, store *users.Store) api.Auth {
 	a := api.Auth{Users: githubUsers, Store: store, SessionKey: []byte(cfg.Session.SigningKey), SiteURL: cfg.Site.URL}
 
+	// Both logins need the app: the website's to swap its code, the CLI's to check that the
+	// token is one GitHub issued to this app.
 	if cfg.GitHub.ClientSecret != "" {
 		a.OAuth = github.NewOAuth(cfg.GitHub.ClientID, cfg.GitHub.ClientSecret)
 	} else {
-		log.Warn("Dev mode without a GitHub OAuth app, logging in on the website is off")
+		a.Users = nil
+		log.Warn("Dev mode without a GitHub OAuth app, logging in is off, on the website and in the CLI")
 	}
 
 	if len(a.SessionKey) == 0 && cfg.Dev {

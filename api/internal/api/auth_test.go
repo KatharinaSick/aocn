@@ -391,3 +391,11 @@ func TestLoginsAreLimitedAllTogether(t *testing.T) {
 		t.Errorf("asked GitHub %d times, want %d", a.github.asked, githubCallLimit)
 	}
 }
+
+// Without an OAuth app (dev mode only) there's nothing to check a token as, so nobody signs in.
+func TestCLILoginWithoutAnOAuthApp(t *testing.T) {
+	h := NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{SessionKey: sessionKey}, Profiles{})
+	if rec := postAs(h, "/auth/cli", "Bearer "+githubPlayerToken); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status %d, want 503", rec.Code)
+	}
+}

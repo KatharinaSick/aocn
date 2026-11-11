@@ -34,7 +34,7 @@ repository next to this one, after `make bundle` there. To see a door before Dec
 date in `schedule.yaml` (and don't commit that). `aocn open` asks the API at
 `$AOCN_API_URL`, `https://aocn.dev/api` when unset: `AOCN_API_URL=http://localhost:8080 aocn open 1`.
 
-Logging in on the website locally uses the same GitHub OAuth app as production, "Advent of
+Logging in locally, on the website or with `aocn login`, uses the same GitHub OAuth app as production, "Advent of
 Cloud Native", which lists `http://localhost:4321/api/auth/github/callback` as a second callback
 URL. GitHub only redirects the browser there, so nothing has to reach your machine. Generate a
 client secret of its own for local use on the app's page (GitHub → Settings → Developer
@@ -46,7 +46,8 @@ GITHUB_CLIENT_ID=Ov23lim4gHxoibK0E5Tv
 GITHUB_CLIENT_SECRET=...
 ```
 
-Without it, everything else works and logging in says it isn't set up.
+Without it, everything else works and logging in, on the website and in the CLI, says it isn't
+set up: the API checks a CLI token with GitHub as the app, using the secret.
 
 Run the tests with `devbox run test`, and a full build with `devbox run build`. Both include the CLI.
 

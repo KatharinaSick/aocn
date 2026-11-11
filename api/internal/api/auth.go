@@ -58,8 +58,8 @@ type OAuthApp interface {
 	Exchange(ctx context.Context, code, redirectURI string) (string, error)
 }
 
-// GitHubUsers asks GitHub whose token it is. *github.Users does. Only logging in asks: once
-// on the website, once in aocn login.
+// GitHubUsers asks GitHub whose token it is, accepting only tokens GitHub issued to this
+// OAuth app. *github.Users does. Only logging in asks: once on the website, once in aocn login.
 type GitHubUsers interface {
 	User(ctx context.Context, token string) (github.User, error)
 }
@@ -74,7 +74,8 @@ type UserStore interface {
 type Auth struct {
 	// OAuth is nil when the API has no client secret, which only happens in dev mode.
 	OAuth OAuthApp
-	// Users finds out whose GitHub token it is.
+	// Users finds out whose GitHub token it is. Nil without an OAuth app, which only happens
+	// in dev mode: then the CLI can't sign in either.
 	Users      GitHubUsers
 	Store      UserStore
 	SessionKey []byte
@@ -281,6 +282,10 @@ type cliLoginResponse struct {
 func handleCLILogin(log app.Logger, a Auth) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		if a.Users == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "signing in isn't set up here: set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET")
+			return
+		}
 		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok || strings.TrimSpace(token) == "" {
 			writeJSONError(w, http.StatusUnauthorized, "sign in with: aocn login")
