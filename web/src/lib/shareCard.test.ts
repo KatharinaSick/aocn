@@ -25,8 +25,8 @@ describe('readTokens', () => {
 
 describe('titleSize', () => {
   it('fits the longest title on one line', () => {
-    expect(titleSize('Adequate')).toBe(88);
-    expect(titleSize('Occasionally useful')).toBe(64);
+    expect(titleSize('Adequate')).toBe(72);
+    expect(titleSize('Occasionally useful')).toBe(56);
   });
 });
 
@@ -38,12 +38,12 @@ describe('shareCard', () => {
   ];
   const card = shareCard({ login: 'octo', assessment: assess(1, 3), cells, year: 2026, tokens, skySvg: '<svg/>' });
 
-  it('says who it is, what she thinks of them, and how far they got', () => {
+  it('has her whole assessment, as on the card page, and how far they got', () => {
     expect(texts(card)).toEqual([
-      'POLARIS-7',
-      '// advent of cloud native',
-      '@octo is',
+      'advent of cloud native',
+      'POLARIS-7 has assessed @octo as',
       'Occasionally useful',
+      'Fixed something once. I made a note.',
       '01',
       '03',
       '05',

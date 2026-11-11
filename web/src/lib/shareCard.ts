@@ -30,7 +30,7 @@ export function readTokens(css: string): Record<string, string> {
 
 /** Her title's size: long titles get smaller, so the longest still fits on one line. */
 export function titleSize(title: string): number {
-  return title.length > 14 ? 64 : 88;
+  return title.length > 14 ? 56 : 72;
 }
 
 const MOOD_TOKEN: Record<PolaMood, string> = {
@@ -131,25 +131,22 @@ export function shareCard({ login, assessment, cells, year, tokens: t, skySvg }:
         flexDirection: 'column',
         justifyContent: 'space-between',
       },
-    el(
-      'div',
-      { display: 'flex', gap: 16 },
-      el('span', { fontWeight: 700, letterSpacing: '0.08em' }, 'POLARIS-7'),
-      el('span', { color: t['color-muted'] }, '// advent of cloud native'),
-    ),
+    el('span', { fontWeight: 700, letterSpacing: '0.08em' }, 'advent of cloud native'),
+    // Her assessment, word for word as on the card page.
     el(
       'div',
       { display: 'flex', alignItems: 'center', gap: 48 },
       svgImage(polaFaceSvg(assessment.mood, face, t['color-bg']), 192, 144),
       el(
         'div',
-        { display: 'flex', flexDirection: 'column', gap: 8 },
-        el('span', { color: t['color-text-soft'], fontSize: 32 }, `@${login} is`),
+        { display: 'flex', flexDirection: 'column', gap: 12, width: 768 },
+        el('span', { color: t['color-text-soft'] }, `POLARIS-7 has assessed @${login} as`),
         el(
           'span',
           { color: t['color-aurora'], fontSize: titleSize(assessment.title), fontWeight: 700, letterSpacing: '-0.02em' },
           assessment.title,
         ),
+        el('span', { color: t['color-text'], lineHeight: 1.4 }, assessment.line),
       ),
     ),
     el('div', { display: 'flex', gap: 12 }, ...cells.map(doorCell)),
