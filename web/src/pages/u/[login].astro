@@ -123,27 +123,15 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
             </ol>
           </section>
 
-          <!-- Only on your own card: sharing it, and logging out. Shown by the script below. -->
+          <!-- Only on your own card: sharing it (the link previews as the share image), and
+               logging out. Shown by the script below. -->
           <div class="profileOwn" data-login={profile.login} hidden>
-            <section class="profileShare" aria-labelledby="profileShareTitle">
-              <h2 class="profileDoorsTitle" id="profileShareTitle">
-                <span aria-hidden="true">$ share</span>
-                <span class="srOnly">share your card</span>
-              </h2>
-              <img
-                class="profileShareImage"
-                src={`/u/${profile.login}/card.png`}
-                width="1200"
-                height="630"
-                loading="lazy"
-                alt={`POLARIS-7 has assessed @${profile.login} as ${assessment.title}. ${fixed} of ${DOOR_COUNT} doors fixed.`}
-              />
+            <section class="profileShare" aria-label="share your card">
               <div class="profileShareActions">
                 <Button variant="primary" class="profileShareCopy" data-url={`/u/${profile.login}`}>copy link</Button>
                 <Button href={`/u/${profile.login}/card.png`} download={`aocn-${profile.login}.png`}>download image</Button>
                 <span class="profileShareStatus" role="status"></span>
               </div>
-              <p class="profileShareHint">The link shows this image wherever you post it.</p>
             </section>
             <p>
               <button class="profileLogOut" type="button">log out</button>
@@ -259,8 +247,7 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     gap: var(--space-6);
   }
 
-  .profileDoorsSection .profileDoorsTitle,
-  .profileShare .profileDoorsTitle {
+  .profileDoorsSection .profileDoorsTitle {
     margin: 0;
     padding: 0;
     border: none;
@@ -343,19 +330,7 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
 
   .profileOwn:not([hidden]) {
     display: grid;
-    gap: var(--space-12);
-  }
-
-  .profileShare {
-    display: grid;
     gap: var(--space-6);
-  }
-
-  .profileShareImage {
-    width: 100%;
-    height: auto;
-    border: 1px solid var(--color-line-strong);
-    border-radius: var(--radius-screen);
   }
 
   .profileShareActions {
@@ -370,12 +345,6 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
     overflow-wrap: anywhere;
-  }
-
-  .profileShareHint {
-    color: var(--color-text-soft);
-    font-size: var(--font-size-small);
-    line-height: var(--line-height-small);
   }
 
   .profileLogOut {
