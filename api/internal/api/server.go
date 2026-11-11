@@ -60,6 +60,7 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	mux.Handle("GET /me", handleMe(log, auth))
 	// Asked by the website's function, from Netlify's few addresses, so not limited by IP.
 	mux.Handle("GET /users/{login}", handleProfile(log, profiles))
+	mux.Handle("PUT /me/profile", handleSetProfileVisibility(log, profiles))
 }
 
 // spanName labels spans by the matched route pattern (e.g. "GET /health"). When no

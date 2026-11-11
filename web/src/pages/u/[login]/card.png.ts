@@ -12,6 +12,7 @@ import satori from 'satori';
 import skySvg from '../../../social/sky.svg?raw';
 import css from '../../../styles/base.css?raw';
 import { DOOR_NUMBERS, FIRST_DOOR, doorOpensAt, isDoorOpen } from '../../../lib/doors';
+import { SESSION_COOKIE } from '../../../lib/doorPage';
 import { assess, doorCells, fetchProfile, profileCacheHeaders } from '../../../lib/profile';
 import { SHARE_IMAGE_HEIGHT, SHARE_IMAGE_WIDTH, readTokens, shareCard } from '../../../lib/shareCard';
 
@@ -31,8 +32,13 @@ const fonts = [
   { name: 'JetBrains Mono', data: bytes(bold), weight: 700 as const, style: 'normal' as const },
 ];
 
-export const GET: APIRoute = async ({ params }) => {
-  const answer = await fetchProfile(import.meta.env.API_URL, params.login ?? '');
+// The session goes along, like on the card: the owner can download the image of their card
+// even while it's private. Everyone else, link previews included, gets none for a private
+// card. profileCacheHeaders keeps the owner's copy out of every cache.
+export const GET: APIRoute = async ({ params, cookies }) => {
+  const answer = await fetchProfile(import.meta.env.API_URL, params.login ?? '', {
+    session: cookies.get(SESSION_COOKIE)?.value,
+  });
   const headers = profileCacheHeaders(answer);
   if (answer.state === 'missing') {
     return new Response(null, { status: 404, headers });

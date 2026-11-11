@@ -14,16 +14,23 @@ const body = {
   avatarUrl: 'https://example.com/a.png',
   since: '2026-11-20T09:00:00Z',
   doors: [{ door: 1, solvedAt: '2026-12-01T06:30:00Z' }],
+  public: true,
+  own: false,
 };
 
 describe('fetchProfile', () => {
   it('reads the card', async () => {
     let asked = '';
-    const answer = await fetchProfile('http://api', 'Octo', async (url) => {
-      asked = String(url);
-      return new Response(JSON.stringify(body), { status: 200 });
+    let headers: HeadersInit | undefined;
+    const answer = await fetchProfile('http://api', 'Octo', {
+      fetchFn: async (url, init) => {
+        asked = String(url);
+        headers = init?.headers;
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
     });
     expect(asked).toBe('http://api/users/Octo');
+    expect(headers).toEqual({ Accept: 'application/json' });
     expect(answer).toEqual({
       state: 'found',
       profile: {
@@ -31,8 +38,22 @@ describe('fetchProfile', () => {
         avatarUrl: 'https://example.com/a.png',
         since: new Date('2026-11-20T09:00:00Z'),
         solved: new Map([[1, new Date('2026-12-01T06:30:00Z')]]),
+        public: true,
+        own: false,
       },
     });
+  });
+
+  it('sends only the session cookie on', async () => {
+    let headers: HeadersInit | undefined;
+    await fetchProfile('http://api', 'Octo', {
+      session: 'signed.jwt.value',
+      fetchFn: async (_, init) => {
+        headers = init?.headers;
+        return new Response(JSON.stringify({ ...body, public: false, own: true }), { status: 200 });
+      },
+    });
+    expect(headers).toEqual({ Accept: 'application/json', Cookie: 'aocn_session=signed.jwt.value' });
   });
 
   it("doesn't ask for logins GitHub wouldn't allow", async () => {
@@ -40,14 +61,16 @@ describe('fetchProfile', () => {
       throw new Error('asked');
     };
     for (const login of ['', '-octo', 'octo_cat', '../health', 'a'.repeat(40), 'octo%2F']) {
-      expect(await fetchProfile('http://api', login, never)).toEqual({ state: 'missing' });
+      expect(await fetchProfile('http://api', login, { fetchFn: never })).toEqual({ state: 'missing' });
     }
   });
 
   it('is unavailable when the API is down', async () => {
     expect(
-      await fetchProfile('http://api', 'octo', async () => {
-        throw new TypeError('connection refused');
+      await fetchProfile('http://api', 'octo', {
+        fetchFn: async () => {
+          throw new TypeError('connection refused');
+        },
       }),
     ).toEqual({ state: 'unavailable' });
   });
@@ -57,6 +80,12 @@ describe('readProfileAnswer', () => {
   it('reads 404 as missing and 5xx as unavailable', () => {
     expect(readProfileAnswer(404, { error: 'nobody here by that name' })).toEqual({ state: 'missing' });
     expect(readProfileAnswer(503, null)).toEqual({ state: 'unavailable' });
+  });
+
+  it('reads a card without a say on who sees it as private and not your own', () => {
+    const { public: _, own: __, ...older } = body;
+    const answer = readProfileAnswer(200, older);
+    expect(answer.state === 'found' && [answer.profile.public, answer.profile.own]).toEqual([false, false]);
   });
 
   it('throws on nonsense', () => {
@@ -94,9 +123,29 @@ describe('profileLine', () => {
 });
 
 describe('profileCacheHeaders', () => {
+  const found = (own: boolean) => {
+    const answer = readProfileAnswer(200, { ...body, own });
+    if (answer.state !== 'found') throw new Error('not found');
+    return answer;
+  };
+
   it('caches cards and misses on Netlify, never a failure', () => {
     expect(profileCacheHeaders({ state: 'missing' })['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=60');
+    expect(profileCacheHeaders(found(false))['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=60');
     expect(profileCacheHeaders({ state: 'unavailable' })).toEqual({ 'Cache-Control': 'no-store' });
+  });
+
+  // The 404 everyone else gets for a private card must never be what its owner gets.
+  it('keeps a copy per session cookie', () => {
+    expect(profileCacheHeaders({ state: 'missing' })['Netlify-Vary']).toBe('cookie=aocn_session');
+    expect(profileCacheHeaders(found(false))['Netlify-Vary']).toBe('cookie=aocn_session');
+  });
+
+  it("never keeps the owner's own view", () => {
+    expect(profileCacheHeaders(found(true))).toEqual({
+      'Cache-Control': 'private, no-store',
+      'Netlify-CDN-Cache-Control': 'no-store',
+    });
   });
 });
 

@@ -54,11 +54,50 @@ func TestByLoginIgnoresCaseAndFindsWhoHasItNow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, since, err := store.ByLogin(ctx, "OCTO")
-	if err != nil || got.GitHubID != 9 || got.Login != "Octo" || !since.Equal(at.Add(time.Hour)) {
-		t.Fatalf("got %+v since %v, %v", got, since, err)
+	got, err := store.ByLogin(ctx, "OCTO")
+	if err != nil || got.GitHubID != 9 || got.Login != "Octo" || !got.Since.Equal(at.Add(time.Hour)) {
+		t.Fatalf("got %+v, %v", got, err)
 	}
-	if _, _, err := store.ByLogin(ctx, "nobody"); err != ErrNotFound {
+	if _, err := store.ByLogin(ctx, "nobody"); err != ErrNotFound {
 		t.Errorf("unknown login: %v", err)
+	}
+}
+
+func TestProfilesArePrivateUntilMadePublic(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 12, 1, 6, 30, 0, 0, time.UTC)
+
+	// 8 was octo; 9 has it now. 8 making their card public must not move the login back.
+	if err := store.Save(ctx, User{GitHubID: 8, Login: "octo", AvatarURL: "a"}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(ctx, User{GitHubID: 9, Login: "octo", AvatarURL: "b"}, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.ByLogin(ctx, "octo"); err != nil || got.Public {
+		t.Fatalf("new profile: %+v, %v", got, err)
+	}
+
+	if err := store.SetPublic(ctx, 8, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.ByLogin(ctx, "octo"); err != nil || got.GitHubID != 9 || got.Public {
+		t.Fatalf("after 8 went public: %+v, %v", got, err)
+	}
+
+	if err := store.SetPublic(ctx, 9, true); err != nil {
+		t.Fatal(err)
+	}
+	// Logging in again keeps the choice.
+	if err := store.Save(ctx, User{GitHubID: 9, Login: "octo", AvatarURL: "c"}, at.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.ByLogin(ctx, "octo"); err != nil || !got.Public {
+		t.Fatalf("after 9 went public and logged in again: %+v, %v", got, err)
+	}
+
+	if err := store.SetPublic(ctx, 404, true); err != ErrNotFound {
+		t.Errorf("unknown user: %v", err)
 	}
 }

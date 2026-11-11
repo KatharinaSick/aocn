@@ -65,20 +65,43 @@ func (s *Store) Get(ctx context.Context, githubUserID int64) (User, error) {
 	return u, err
 }
 
-// ByLogin returns the user with this login, ignoring case, and when they first showed up. A
-// login can be renamed and then taken by someone else, so more than one row can have it; the
-// one refreshed last is the one who has it now.
-func (s *Store) ByLogin(ctx context.Context, login string) (User, time.Time, error) {
-	var u User
-	var since time.Time
+// Profile is someone as their profile card shows them.
+type Profile struct {
+	User
+	// Since is when they first showed up.
+	Since time.Time
+	// Public is whether everyone may see their card, not just them. False until they say so.
+	Public bool
+}
+
+// ByLogin returns the profile of whoever has this login, ignoring case. A login can be
+// renamed and then taken by someone else, so more than one row can have it; the one
+// refreshed last is the one who has it now.
+func (s *Store) ByLogin(ctx context.Context, login string) (Profile, error) {
+	var p Profile
 	err := s.pool.QueryRow(ctx, `
-		SELECT github_user_id, login, avatar_url, created_at FROM users
+		SELECT github_user_id, login, avatar_url, created_at, profile_public FROM users
 		WHERE lower(login) = lower($1)
 		ORDER BY updated_at DESC
 		LIMIT 1`, login,
-	).Scan(&u.GitHubID, &u.Login, &u.AvatarURL, &since)
+	).Scan(&p.GitHubID, &p.Login, &p.AvatarURL, &p.Since, &p.Public)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, time.Time{}, ErrNotFound
+		return Profile{}, ErrNotFound
 	}
-	return u, since, err
+	return p, err
+}
+
+// SetPublic says whether everyone may see this user's card. It leaves updated_at alone:
+// that says who has a login now, and choosing who sees your card doesn't change it.
+func (s *Store) SetPublic(ctx context.Context, githubUserID int64, public bool) error {
+	tag, err := s.pool.Exec(ctx,
+		"UPDATE users SET profile_public = $2 WHERE github_user_id = $1", githubUserID, public,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
