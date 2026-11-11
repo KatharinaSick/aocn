@@ -2,9 +2,11 @@
  * The profile card (/u/<login>): what the API says about someone, which doors to show as
  * fixed, and what POLARIS-7 makes of it.
  *
- * The card is the same for everyone who looks at it, so it can be cached. Whether it's your
- * own card (and "log out" shows) is asked afterwards, in the browser.
+ * A card is private until its owner makes it public. The API decides who sees it: everyone
+ * else gets the same 404 as for a login nobody has. So the visitor's session goes along, and
+ * the owner's own view, the only one that differs, is kept out of every cache.
  */
+import { SESSION_COOKIE } from './doorPage';
 import type { PolaMood } from './polaFace';
 
 export interface Profile {
@@ -14,6 +16,10 @@ export interface Profile {
   since: Date;
   /** The doors they fixed, by door, with when they first passed. Only doors that are open. */
   solved: Map<number, Date>;
+  /** Whether everyone may see the card. Only its owner ever sees false. */
+  public: boolean;
+  /** Whether it's the card of who asked. */
+  own: boolean;
 }
 
 export type ProfileAnswer = { state: 'found'; profile: Profile } | { state: 'missing' } | { state: 'unavailable' };
@@ -21,18 +27,27 @@ export type ProfileAnswer = { state: 'found'; profile: Profile } | { state: 'mis
 /** What GitHub allows in a login; the API checks the same. */
 const GITHUB_LOGIN = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 
-/** Asks the API for someone's card. A login GitHub wouldn't allow is missing without asking. */
+/**
+ * Asks the API for someone's card. With a session (the visitor's session cookie), the owner
+ * gets their card even while it's private. A login GitHub wouldn't allow is missing without
+ * asking.
+ */
 export async function fetchProfile(
   apiUrl: string,
   login: string,
-  fetchFn: typeof fetch = fetch,
+  { session, fetchFn = fetch }: { session?: string; fetchFn?: typeof fetch } = {},
 ): Promise<ProfileAnswer> {
   if (!GITHUB_LOGIN.test(login)) {
     return { state: 'missing' };
   }
   let response: Response;
   try {
-    response = await fetchFn(`${apiUrl}/users/${login}`, { headers: { Accept: 'application/json' } });
+    // Only the session cookie goes on, none of the visitor's other cookies.
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (session) {
+      headers.Cookie = `${SESSION_COOKIE}=${session}`;
+    }
+    response = await fetchFn(`${apiUrl}/users/${login}`, { headers });
   } catch {
     return { state: 'unavailable' };
   }
@@ -64,6 +79,8 @@ export function readProfileAnswer(status: number, body: unknown): ProfileAnswer 
       avatarUrl: typeof b.avatarUrl === 'string' ? b.avatarUrl : '',
       since: new Date(b.since),
       solved,
+      public: b.public === true,
+      own: b.own === true,
     },
   };
 }
@@ -111,14 +128,22 @@ export function profileLine(cells: DoorCell[]): { mood: PolaMood; message: strin
 /** How long the rendered card may stay in Netlify's cache: a new pass shows up after this. */
 export const PROFILE_CDN_SECONDS = 60;
 
-/** Cache headers for the rendered card. Browsers always ask again; Netlify keeps a copy. */
+/**
+ * Cache headers for the rendered card. Browsers always ask again; Netlify keeps a copy of
+ * what everyone sees, by session cookie, so the copy for everyone else (a 404, while the
+ * card is private) never reaches the owner. The owner's own view isn't kept anywhere.
+ */
 export function profileCacheHeaders(answer: ProfileAnswer): Record<string, string> {
   if (answer.state === 'unavailable') {
     return { 'Cache-Control': 'no-store' };
   }
+  if (answer.state === 'found' && answer.profile.own) {
+    return { 'Cache-Control': 'private, no-store', 'Netlify-CDN-Cache-Control': 'no-store' };
+  }
   return {
     'Cache-Control': 'public, max-age=0, must-revalidate',
     'Netlify-CDN-Cache-Control': `public, s-maxage=${PROFILE_CDN_SECONDS}`,
+    'Netlify-Vary': `cookie=${SESSION_COOKIE}`,
   };
 }
 

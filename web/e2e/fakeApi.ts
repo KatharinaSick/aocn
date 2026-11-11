@@ -2,7 +2,7 @@
 // made-up open door: the real ones live in the private challenges repository, never here.
 // The text is long enough to wrap, and has every part a door page can show. Door 3 is open
 // but can't be served, for the page that says to come back later. One made-up player has
-// fixed door 1, for the profile card. Door 5 isn't open yet, and
+// fixed door 1, for the profile card; another sees their own private card. Door 5 isn't open yet, and
 // door 7 is a previewer's early look. Door 9 was never uploaded.
 import { createServer } from 'node:http';
 
@@ -23,6 +23,8 @@ const profile = {
   avatarUrl: '',
   since: '2026-11-20T09:00:00Z',
   doors: [{ door: 1, solvedAt: '2026-12-01T06:30:00+01:00' }],
+  public: true,
+  own: false,
 };
 
 createServer((req, res) => {
@@ -42,6 +44,8 @@ createServer((req, res) => {
     res.end('{"door":5,"opensAt":"2026-12-05T06:00:00+01:00"}');
   } else if (req.url === '/users/example') {
     res.end(JSON.stringify(profile));
+  } else if (req.url === '/users/mine') {
+    res.end(JSON.stringify({ ...profile, login: 'mine', public: false, own: true }));
   } else if (req.url === '/health') {
     res.end('{"status":"ok"}');
   } else {

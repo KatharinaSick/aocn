@@ -167,6 +167,13 @@ Follows the same stack as `KatharinaSick/clubrizer`:
   same reason as the page: a link preview has to show real progress. `src/lib/shareCard.ts`
   lays it out from the API's JSON and the design tokens; the endpoint draws it with satori
   and resvg (WebAssembly, so no native binary), with the font and the sky built in.
+- **Profiles are private until their owner makes them public** (`PUT /me/profile` from the
+  switch on their own card). The API decides: `GET /users/{login}` answers a private profile
+  with the same 404 as a login nobody has, except to its owner's website session. So the page
+  passes the visitor's `aocn_session` cookie on, and its cache headers vary Netlify's copy by
+  that cookie and keep the owner's own view (`"own": true`) out of every cache. The share image
+  does the same, so owners can download the image of a private card; link previews (no
+  cookie) get none.
 - **Door pages (`/doors/<n>`) are the second on-demand page**, for the same reason plus gating: a
   door's content must not be in the build before it opens, and nothing may need a build at 06:00.
   The function asks `GET /doors/{n}` (at `API_URL`, the Cloud Run URL from `netlify.toml`) and

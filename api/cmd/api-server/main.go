@@ -95,7 +95,8 @@ func main() {
 	// The door endpoints check the CLI's token, and the door page the website's session
 	// cookie: both signed with this key.
 	doorsAPI.SessionKey = authAPI.SessionKey
-	profiles := api.Profiles{Schedule: sched, Users: userStore, Results: resultStore}
+	// The profile endpoints check the website's session cookie, to tell a card's owner.
+	profiles := api.Profiles{Schedule: sched, Users: userStore, Results: resultStore, SessionKey: authAPI.SessionKey}
 
 	// WriteTimeout is also the longest a bundle download may take: past it the connection
 	// drops and aocn open reports a broken download. Fine while bundles are small; bigger
