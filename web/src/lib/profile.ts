@@ -5,7 +5,7 @@
  * The card is the same for everyone who looks at it, so it can be cached. Whether it's your
  * own card (and "log out" shows) is asked afterwards, in the browser.
  */
-import type { PolaMood } from '../components/PolaFace.astro';
+import type { PolaMood } from './polaFace';
 
 export interface Profile {
   login: string;

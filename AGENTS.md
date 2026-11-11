@@ -163,6 +163,10 @@ Follows the same stack as `KatharinaSick/clubrizer`:
   header, footer and class names in `html/template`, free to drift from the real site.
   Keep it that way: no logic in the function, and no other on-demand page unless it genuinely needs
   per-request HTML.
+- **A profile's share image (`/u/<handle>/card.png`)** is drawn in the same function, for the
+  same reason as the page: a link preview has to show real progress. `src/lib/shareCard.ts`
+  lays it out from the API's JSON and the design tokens; the endpoint draws it with satori
+  and resvg (WebAssembly, so no native binary), with the font and the sky built in.
 - **Door pages (`/doors/<n>`) are the second on-demand page**, for the same reason plus gating: a
   door's content must not be in the build before it opens, and nothing may need a build at 06:00.
   The function asks `GET /doors/{n}` (at `API_URL`, the Cloud Run URL from `netlify.toml`) and

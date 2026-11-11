@@ -42,6 +42,10 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     <BaseLayout
       title={`@${profile.login}`}
       description={`POLARIS-7 has assessed @${profile.login} as ${assessment.title}: ${fixed} of ${DOOR_COUNT} doors fixed on Advent of Cloud Native.`}
+      image={{
+        src: `/u/${profile.login}/card.png`,
+        alt: `POLARIS-7 has assessed @${profile.login} as ${assessment.title}. ${fixed} of ${DOOR_COUNT} doors fixed.`,
+      }}
       pola={profileLine(cells)}
     >
       <TextPage command="$ whoami" title={`@${profile.login}`}>

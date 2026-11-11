@@ -6,7 +6,9 @@
 // Her eyes blink every 5 seconds; nothing else about her moves. The blink stops under
 // prefers-reduced-motion.
 
-export type PolaMood = 'neutral' | 'annoyed' | 'worried' | 'fond';
+import { eyes, mouths, sweat, type PolaMood } from '../lib/polaFace';
+
+export type { PolaMood };
 export type PolaFaceSize = 'small' | 'medium' | 'large' | 'xlarge';
 
 interface Props {
@@ -27,27 +29,6 @@ const dimensions: Record<PolaFaceSize, [number, number]> = {
   medium: [48, 36],
   large: [112, 84],
   xlarge: [160, 120],
-};
-
-// [x, y, width, height] on the 128 × 96 grid.
-type Pixel = [number, number, number, number];
-
-const eyes: Record<PolaMood, Pixel[]> = {
-  // Small eyes, no lids.
-  neutral: [[36, 40, 8, 8], [84, 40, 8, 8]],
-  // Lids low on the pupils.
-  annoyed: [[28, 32, 24, 8], [76, 32, 24, 8], [36, 40, 8, 8], [84, 40, 8, 8]],
-  // Lids tilted up toward the middle, lower pupils.
-  worried: [[28, 36, 8, 8], [36, 32, 8, 8], [44, 28, 8, 8], [76, 28, 8, 8], [84, 32, 8, 8], [92, 36, 8, 8], [36, 48, 8, 8], [84, 48, 8, 8]],
-  // Closed into ^ shapes.
-  fond: [[32, 40, 8, 8], [40, 32, 8, 8], [48, 40, 8, 8], [72, 40, 8, 8], [80, 32, 8, 8], [88, 40, 8, 8]],
-};
-
-const mouths: Record<PolaMood, Pixel[]> = {
-  neutral: [[44, 64, 40, 8]],
-  annoyed: [[44, 64, 40, 8]],
-  worried: [[48, 68, 32, 8]],
-  fond: [[40, 60, 8, 8], [48, 68, 32, 8], [80, 60, 8, 8]],
 };
 
 const [width, height] = dimensions[size];
@@ -71,8 +52,7 @@ const outline = size === 'small' ? { stroke: 8, rx: 10 } : { stroke: 4, rx: 8 };
   {mouths[mood].map(([x, y, w, h]) => <rect x={x} y={y} width={w} height={h} />)}
   {mood === 'worried' && (
     <g class="polaFaceSweat">
-      <rect x="106" y="16" width="6" height="6" />
-      <rect x="104" y="22" width="10" height="8" />
+      {sweat.map(([x, y, w, h]) => <rect x={x} y={y} width={w} height={h} />)}
     </g>
   )}
 </svg>
