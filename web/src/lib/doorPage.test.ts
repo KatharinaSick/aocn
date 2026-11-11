@@ -15,6 +15,7 @@ describe('readDoorAnswer', () => {
   it('reads an open door', () => {
     expect(readDoorAnswer(200, openBody)).toEqual({
       state: 'open',
+      preview: false,
       page: { door: 1, opensAt, title: 'Door', story: 'One.', log: 'Noted.', videoId: '' },
     });
   });
@@ -57,54 +58,69 @@ describe('fetchDoor', () => {
 
   it('asks the API for the door', async () => {
     const fetchFn = answering(200, openBody);
-    expect((await fetchDoor('http://api', '1', isDoor, fetchFn)).state).toBe('open');
+    expect((await fetchDoor('http://api', '1', isDoor, { fetchFn })).state).toBe('open');
     expect(fetchFn).toHaveBeenCalledWith('http://api/doors/1', expect.anything());
+  });
+
+  it('passes the session on, and only the session', async () => {
+    const fetchFn = answering(200, openBody);
+    await fetchDoor('http://api', '1', isDoor, { session: 'signed.jwt.value', fetchFn });
+    expect(fetchFn).toHaveBeenCalledWith('http://api/doors/1', {
+      headers: { Accept: 'application/json', Cookie: 'aocn_session=signed.jwt.value' },
+    });
+    const anonymous = answering(200, openBody);
+    await fetchDoor('http://api', '1', isDoor, { fetchFn: anonymous });
+    expect(anonymous).toHaveBeenCalledWith('http://api/doors/1', { headers: { Accept: 'application/json' } });
   });
 
   it('reads an API it cannot reach as unavailable', async () => {
     const fetchFn = vi.fn(async () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
-    expect(await fetchDoor('http://api', '1', isDoor, fetchFn)).toEqual({ state: 'unavailable' });
+    expect(await fetchDoor('http://api', '1', isDoor, { fetchFn })).toEqual({ state: 'unavailable' });
   });
 
   // 2 is a day without a door, 25 is after the last.
   it.each(['0', '01', '+1', '1x', '../health', '-1', '100', '', '2', '25', '50'])('never asks the API about %j', async (door) => {
     const fetchFn = answering(200, openBody);
-    expect(await fetchDoor('http://api', door, isDoor, fetchFn)).toEqual({ state: 'missing' });
+    expect(await fetchDoor('http://api', door, isDoor, { fetchFn })).toEqual({ state: 'missing' });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
 
 describe('doorCacheHeaders', () => {
   const closed = { state: 'closed' as const, door: 1, opensAt };
+  const open = readDoorAnswer(200, openBody);
+  const preview = readDoorAnswer(200, { ...openBody, preview: true });
 
-  it('keeps a closed door at most a minute', () => {
-    const headers = doorCacheHeaders(closed, new Date(opensAt.getTime() - 3600_000));
-    expect(headers['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=60');
+  // Netlify would serve a cached closed door to a previewer too, who'd never see theirs.
+  it('never caches a closed door', () => {
+    expect(doorCacheHeaders(closed)).toEqual({ 'Cache-Control': 'no-store' });
   });
 
-  it('never keeps a closed door past its opening', () => {
-    const headers = doorCacheHeaders(closed, new Date(opensAt.getTime() - 20_500));
-    expect(headers['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=20');
-  });
-
-  it.each([0, 999, -5000])('does not cache a closed door %i ms before its opening', (ms) => {
-    expect(doorCacheHeaders(closed, new Date(opensAt.getTime() - ms))).toEqual({ 'Cache-Control': 'no-store' });
+  it('keeps a preview nowhere, not even in the browser', () => {
+    expect(preview).toMatchObject({ state: 'open', preview: true });
+    expect(doorCacheHeaders(preview)).toEqual({
+      'Cache-Control': 'private, no-store',
+      'Netlify-CDN-Cache-Control': 'no-store',
+    });
   });
 
   it('never caches an unavailable door', () => {
-    expect(doorCacheHeaders({ state: 'unavailable' }, opensAt)).toEqual({ 'Cache-Control': 'no-store' });
+    expect(doorCacheHeaders({ state: 'unavailable' })).toEqual({ 'Cache-Control': 'no-store' });
   });
 
   it('keeps an open door longer', () => {
-    const open = readDoorAnswer(200, openBody);
-    expect(doorCacheHeaders(open, opensAt)['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=300');
+    expect(doorCacheHeaders(open)['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=300');
+  });
+
+  it('keeps a door that is not in the schedule a minute', () => {
+    expect(doorCacheHeaders({ state: 'missing' })['Netlify-CDN-Cache-Control']).toBe('public, s-maxage=60');
   });
 
   it('never lets browsers keep a copy', () => {
-    for (const answer of [closed, readDoorAnswer(200, openBody), { state: 'missing' as const }]) {
-      const headers = doorCacheHeaders(answer, new Date(opensAt.getTime() - 3600_000));
+    for (const answer of [open, { state: 'missing' as const }]) {
+      const headers = doorCacheHeaders(answer);
       expect(headers['Cache-Control']).toBe('public, max-age=0, must-revalidate');
     }
   });

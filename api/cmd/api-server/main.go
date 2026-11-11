@@ -91,6 +91,9 @@ func main() {
 	log.Info("Previewers loaded", "count", len(cfg.PreviewerAccess))
 
 	userStore := users.NewStore(pool)
+	authAPI := auth(log, cfg, githubUsers, userStore)
+	// The door page takes the website's session cookie, signed with the same key.
+	doorsAPI.SessionKey = authAPI.SessionKey
 	profiles := api.Profiles{Schedule: sched, Users: userStore, Results: resultStore}
 
 	// WriteTimeout is also the longest a bundle download may take: past it the connection
@@ -98,7 +101,7 @@ func main() {
 	// bundles or slower players mean raising it, or handing out signed bucket URLs instead.
 	httpServer := &http.Server{
 		Addr:         net.JoinHostPort("", cfg.Server.Port),
-		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI, auth(log, cfg, githubUsers, userStore), profiles),
+		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI, authAPI, profiles),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,

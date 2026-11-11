@@ -143,8 +143,9 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 			previewer.ID:      {All: true},
 			door3Previewer.ID: {Doors: map[int]bool{3: true}},
 		},
-		Results: a.results,
-		Now:     func() time.Time { return now },
+		Results:    a.results,
+		SessionKey: sessionKey,
+		Now:        func() time.Time { return now },
 	}, Auth{}, Profiles{})
 	return a
 }

@@ -234,10 +234,16 @@ func handleMe(log app.Logger, a Auth) http.Handler {
 
 // loggedIn returns the GitHub user ID from a valid session cookie.
 func (a Auth) loggedIn(r *http.Request) (int64, bool) {
+	return sessionUser(r, a.SessionKey, a.now())
+}
+
+// sessionUser returns the GitHub user ID from a valid session cookie. Without a key, nobody
+// is logged in.
+func sessionUser(r *http.Request, key []byte, now time.Time) (int64, bool) {
 	c, err := r.Cookie(sessionCookie)
-	if err != nil {
+	if err != nil || len(key) == 0 {
 		return 0, false
 	}
-	id, err := session.Verify(a.SessionKey, c.Value, a.now())
+	id, err := session.Verify(key, c.Value, now)
 	return id, err == nil
 }

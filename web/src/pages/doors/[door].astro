@@ -18,13 +18,17 @@
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { loginHref } from '../../lib/account';
-import { doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
+import { SESSION_COOKIE, doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
 import { formatStationTime, isDoor } from '../../lib/doors';
 
 export const prerender = false;
 
-const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '', isDoor);
-const cacheHeaders = doorCacheHeaders(answer, new Date());
+// The visitor's session goes to the API, which decides whether they get the door early. The
+// answer then depends on who asks, which doorCacheHeaders keeps out of every cache.
+const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '', isDoor, {
+  session: Astro.cookies.get(SESSION_COOKIE)?.value,
+});
+const cacheHeaders = doorCacheHeaders(answer);
 if (answer.state === 'missing') {
   // An empty 404 makes Astro answer with the prerendered 404 page.
   return new Response(null, { status: 404, headers: cacheHeaders });
@@ -42,6 +46,7 @@ for (const [name, value] of Object.entries(cacheHeaders)) {
 }
 
 const page = answer.state === 'open' ? answer.page : undefined;
+const preview = answer.state === 'open' && answer.preview;
 const closed = answer.state === 'closed' ? answer : undefined;
 // fetchDoor only answers for a door in the schedule, so the parameter is one here.
 const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
@@ -52,9 +57,20 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     <BaseLayout
       title={`door ${number} · ${page.title}`}
       description={doorDescription(page.story)}
-      pola={{ mood: 'annoyed', message: `Door ${number} is open. Please do not break anything else.` }}
+      noindex={preview}
+      pola={
+        preview
+          ? { mood: 'worried', message: 'You are early. Please do not tell the crew what is behind this door.' }
+          : { mood: 'annoyed', message: `Door ${number} is open. Please do not break anything else.` }
+      }
     >
       <TextPage command={`$ aocn open ${page.door}`} title={`door ${number} · ${page.title}`}>
+        {preview && (
+          <p class="doorPreviewNote">
+            preview · opens{' '}
+            <time datetime={page.opensAt.toISOString()}>{formatStationTime(page.opensAt)}</time> · only you see this
+          </p>
+        )}
         <div class="doorStory">
           {paragraphs(page.story).map((p) => (
             <p>{p}</p>
@@ -135,6 +151,12 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     color: var(--color-text);
     font-size: var(--font-size-lead);
     line-height: var(--line-height-lead);
+  }
+
+  .doorPreviewNote {
+    color: var(--color-signal);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
   }
 
   .doorPreview {

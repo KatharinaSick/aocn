@@ -20,7 +20,7 @@ function findPages(dir: string): string[] {
 
 // On-demand pages aren't in dist/: they're rendered by `astro dev` from a fake API with a
 // made-up door (playwright.config.ts). List each kind of on-demand page here.
-const onDemandPages = ['http://localhost:4800/doors/1', 'http://localhost:4800/doors/3', 'http://localhost:4800/doors/5', 'http://localhost:4800/u/example'];
+const onDemandPages = ['http://localhost:4800/doors/1', 'http://localhost:4800/doors/3', 'http://localhost:4800/doors/5', 'http://localhost:4800/doors/7', 'http://localhost:4800/u/example'];
 
 const pages = [...findPages(distDir), ...onDemandPages];
 

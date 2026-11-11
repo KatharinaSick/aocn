@@ -3,8 +3,11 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/katharinasick/aocn/api/internal/session"
 )
 
 // A previewer of every door gets them all early, from every endpoint, marked as a preview.
@@ -126,6 +129,71 @@ func TestClosedDoorWhileGitHubIsDown(t *testing.T) {
 		rec := getAs(h, path, previewerToken)
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("%s: status %d, want 503", path, rec.Code)
+		}
+		assertNoSecrets(t, path, rec)
+	}
+}
+
+// getWithSession sends a session cookie the way the website's function passes it on, signed
+// for the user with key.
+func getWithSession(t *testing.T, h http.Handler, path string, key []byte, userID int64) *httptest.ResponseRecorder {
+	t.Helper()
+	signed, err := session.Sign(key, userID, door1OpensAt.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return request(h, http.MethodGet, path, &http.Cookie{Name: sessionCookie, Value: signed})
+}
+
+// On the website a previewer is known by the session cookie, and gets the door's page early,
+// marked as a preview, without asking GitHub.
+func TestPreviewerGetsTheClosedDoorPageWithTheSessionCookie(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
+
+	rec := getWithSession(t, h, "/doors/3", sessionKey, door3Previewer.ID)
+	var page pageResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status %d, %v: %s", rec.Code, err, rec.Body.String())
+	}
+	if !page.Preview || page.Title != "Second" || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("got %+v, Cache-Control %q", page, rec.Header().Get("Cache-Control"))
+	}
+	if h.users.asked != 0 {
+		t.Errorf("asked GitHub %d times", h.users.asked)
+	}
+}
+
+// The cookie gets nothing it shouldn't: not someone else's door, and not with a cookie that
+// isn't ours. Either way the page answers like for anyone: closed, never 401.
+func TestSessionCookieGetsNoMoreThanItsDoors(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
+	cases := []struct {
+		name string
+		path string
+		key  []byte
+		user int64
+	}{
+		{"a previewer of another door", "/doors/1", sessionKey, door3Previewer.ID},
+		{"a player", "/doors/3", sessionKey, player.ID},
+		{"signed with another key", "/doors/3", []byte("another key, another key, another"), previewer.ID},
+	}
+	for _, c := range cases {
+		rec := getWithSession(t, h, c.path, c.key, c.user)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", c.name, rec.Code)
+		}
+		assertNoSecrets(t, c.name, rec)
+	}
+}
+
+// The cookie is for the website's door page only. Bundles, checks and results stay with the
+// CLI's token, so a page on another site can't use someone's cookie to fetch or send them.
+func TestSessionCookieIsOnlyForThePage(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
+	for _, path := range []string{"/doors/3/bundle", "/doors/3/checks"} {
+		rec := getWithSession(t, h, path, sessionKey, previewer.ID)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", path, rec.Code)
 		}
 		assertNoSecrets(t, path, rec)
 	}

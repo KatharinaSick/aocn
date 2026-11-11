@@ -39,6 +39,9 @@ type Doors struct {
 	// Previewers says who gets which doors early.
 	Previewers app.Previewers
 	Results    ResultStore
+	// SessionKey checks the website's session cookie, which the door page takes instead of a
+	// token: the website's function passes it on, so a previewer sees their door early there.
+	SessionKey []byte
 	// Now is the clock; nil means time.Now. Tests set it.
 	Now func() time.Time
 }
@@ -96,11 +99,13 @@ type access struct {
 }
 
 // gate parses the door number and decides whether it may be served: when it's open, or to a
-// previewer of this door. With signIn, the caller must be signed in whatever the door. It
+// previewer of this door. With signIn, the caller must be signed in whatever the door. With
+// website, a closed door also takes the website's session cookie, for the door page. It
 // answers the request itself when the door may not be served, and returns ok only when it may.
 //
-// An open door never asks GitHub unless signIn is set, so 06:00 doesn't depend on GitHub.
-func (d Doors) gate(log app.Logger, w http.ResponseWriter, r *http.Request, signIn bool) (a access, ok bool) {
+// An open door never asks GitHub unless signIn is set, so 06:00 doesn't depend on GitHub, and
+// never looks at the cookie.
+func (d Doors) gate(log app.Logger, w http.ResponseWriter, r *http.Request, signIn, website bool) (a access, ok bool) {
 	// The answer changes at the opening, and depends on who asks, so nothing between here
 	// and the caller may keep a copy. The website caches what it renders.
 	w.Header().Set("Cache-Control", "no-store")
@@ -135,6 +140,15 @@ func (d Doors) gate(log app.Logger, w http.ResponseWriter, r *http.Request, sign
 		}
 		a.caller = &user
 	}
+	// A cookie that's missing, expired or signed with another key is nobody: the door page
+	// works for everyone, so it never answers 401.
+	via := "cli"
+	if !open && a.caller == nil && website {
+		if id, ok := sessionUser(r, d.SessionKey, d.now()); ok {
+			a.caller = &github.User{ID: id}
+			via = "website"
+		}
+	}
 
 	if !open {
 		if a.caller == nil || !d.Previewers.May(a.caller.ID, door) {
@@ -142,7 +156,7 @@ func (d Doors) gate(log app.Logger, w http.ResponseWriter, r *http.Request, sign
 			return access{}, false
 		}
 		a.preview = true
-		log.Info("Preview", "door", door, "github_user_id", a.caller.ID, "login", a.caller.Login)
+		log.Info("Preview", "door", door, "github_user_id", a.caller.ID, "login", a.caller.Login, "via", via)
 	}
 	return a, true
 }
@@ -172,7 +186,7 @@ func (d Doors) caller(log app.Logger, w http.ResponseWriter, r *http.Request, he
 // opening time before that.
 func handleDoorPage(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, false)
+		a, ok := d.gate(log, w, r, false, true)
 		if !ok {
 			return
 		}
@@ -189,7 +203,7 @@ func handleDoorPage(log app.Logger, d Doors) http.Handler {
 // API streams them itself rather than handing out a link to the bucket.
 func handleDoorBundle(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, false)
+		a, ok := d.gate(log, w, r, false, false)
 		if !ok {
 			return
 		}
@@ -223,7 +237,7 @@ func handleDoorBundle(log app.Logger, d Doors) http.Handler {
 // here, never from the player's folder, so editing them can't make a door pass.
 func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, false)
+		a, ok := d.gate(log, w, r, false, false)
 		if !ok {
 			return
 		}
@@ -258,7 +272,7 @@ type verifyResponse struct {
 // decides itself whether the door passed.
 func handleVerify(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, true)
+		a, ok := d.gate(log, w, r, true, false)
 		if !ok {
 			return
 		}
