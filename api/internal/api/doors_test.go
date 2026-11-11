@@ -289,9 +289,34 @@ func TestUnknownDoors(t *testing.T) {
 func TestOpenDoorNotUploaded(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, memoryStorage{})
 	for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks"} {
-		if rec := get(h, path); rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("%s: status %d, want 503", path, rec.Code)
+		rec := get(h, path)
+		var body notReadyResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s: status %d, %v", path, rec.Code, err)
 		}
+		if !body.NotReady || body.Door != 1 || body.Error != "door 1 isn't ready yet" {
+			t.Errorf("%s: got %+v", path, body)
+		}
+	}
+}
+
+// A door that can't be read is an outage, not a door that isn't ready.
+func TestOpenDoorUnreadable(t *testing.T) {
+	h := doorsAt(t, door1OpensAt, brokenStorage{})
+	rec := get(h, "/doors/1")
+	if rec.Code != http.StatusServiceUnavailable || strings.Contains(rec.Body.String(), "notReady") {
+		t.Errorf("status %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// A closed door says nothing about whether it's uploaded to anyone but its previewers.
+func TestClosedDoorNotUploadedIsJustClosed(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(-time.Hour), memoryStorage{})
+	if rec := get(h, "/doors/1"); rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "notReady") {
+		t.Errorf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := getAs(h, "/doors/1", previewerToken); rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "notReady") {
+		t.Errorf("previewer: status %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

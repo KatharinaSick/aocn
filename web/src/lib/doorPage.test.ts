@@ -88,6 +88,15 @@ describe('fetchDoor', () => {
   });
 });
 
+describe('a door that is not ready', () => {
+  it('is told apart from an outage', () => {
+    const body = { error: "door 3 isn't ready yet", door: 3, notReady: true };
+    expect(readDoorAnswer(503, body)).toEqual({ state: 'notReady', door: 3 });
+    expect(readDoorAnswer(503, { error: 'try again in a few minutes' })).toEqual({ state: 'unavailable' });
+    expect(doorCacheHeaders({ state: 'notReady', door: 3 })).toEqual({ 'Cache-Control': 'no-store' });
+  });
+});
+
 describe('doorCacheHeaders', () => {
   const closed = { state: 'closed' as const, door: 1, opensAt };
   const open = readDoorAnswer(200, openBody);

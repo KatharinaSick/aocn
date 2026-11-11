@@ -21,6 +21,8 @@ export type DoorAnswer =
   | { state: 'open'; page: DoorPage; preview: boolean }
   | { state: 'closed'; door: number; opensAt: Date }
   | { state: 'missing' }
+  /** The door may be served (open, or to a previewer), but nothing was uploaded for it yet. */
+  | { state: 'notReady'; door: number }
   /** The door may be open, but the API can't serve it right now: down, or its files unreadable. */
   | { state: 'unavailable' };
 
@@ -66,6 +68,9 @@ export function readDoorAnswer(status: number, body: unknown): DoorAnswer {
       return { state: 'closed', door: b.door, opensAt: new Date(b.opensAt) };
     }
     return { state: 'missing' };
+  }
+  if (status === 503 && b.notReady === true && typeof b.door === 'number') {
+    return { state: 'notReady', door: b.door };
   }
   if (status >= 500 || status === 429) {
     return { state: 'unavailable' };
@@ -114,6 +119,7 @@ export function doorCacheHeaders(answer: DoorAnswer): Record<string, string> {
       seconds = MISSING_DOOR_CDN_SECONDS;
       break;
     case 'closed':
+    case 'notReady':
     case 'unavailable':
       // The next request should ask again: it may be a previewer's, or work this time.
       return { 'Cache-Control': 'no-store' };

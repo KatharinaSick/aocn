@@ -347,12 +347,27 @@ func matchResults(checks []doors.Check, sent []results.CheckResult) ([]results.C
 // writeMissingDoor answers for an open door whose files can't be read. That's our mistake,
 // never the caller's, so it's logged as an error.
 func writeMissingDoor(log app.Logger, w http.ResponseWriter, door int, what string, err error) {
-	if errors.Is(err, doors.ErrNotFound) {
-		log.Error("An open door was never uploaded", "door", door, "file", what)
-	} else {
+	if !errors.Is(err, doors.ErrNotFound) {
 		log.Error("Reading an open door failed", "door", door, "file", what, "error", err)
+		writeJSONError(w, http.StatusServiceUnavailable, "this door can't be served right now, try again in a few minutes")
+		return
 	}
-	writeJSONError(w, http.StatusServiceUnavailable, "this door can't be served right now, try again in a few minutes")
+	// Mostly a previewer of a door still being built. Only someone who may have the door
+	// gets this far, so saying it isn't there yet tells nobody else anything.
+	log.Error("A door was asked for but never uploaded", "door", door, "file", what)
+	writeJSON(w, http.StatusServiceUnavailable, notReadyResponse{
+		Error:    fmt.Sprintf("door %d isn't ready yet", door),
+		Door:     door,
+		NotReady: true,
+	})
+}
+
+// notReadyResponse answers for a door that may be served but was never uploaded, so the
+// website can say so instead of "try again in a few minutes".
+type notReadyResponse struct {
+	Error    string `json:"error"`
+	Door     int    `json:"door"`
+	NotReady bool   `json:"notReady"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

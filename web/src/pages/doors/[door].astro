@@ -36,6 +36,9 @@ if (answer.state === 'missing') {
 if (answer.state === 'closed') {
   Astro.response.status = 404;
 }
+if (answer.state === 'notReady') {
+  Astro.response.status = 503;
+}
 if (answer.state === 'unavailable') {
   Astro.response.status = 503;
   // Without a hint, crawlers and the CDN might come back whenever; a few minutes is right.
@@ -48,6 +51,7 @@ for (const [name, value] of Object.entries(cacheHeaders)) {
 const page = answer.state === 'open' ? answer.page : undefined;
 const preview = answer.state === 'open' && answer.preview;
 const closed = answer.state === 'closed' ? answer : undefined;
+const notReady = answer.state === 'notReady';
 // fetchDoor only answers for a door in the schedule, so the parameter is one here.
 const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 ---
@@ -109,6 +113,20 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
             previewing this door? <a href={loginHref(`/doors/${closed.door}`)}>log in</a>
           </span>
           <span class="doorPreviewLoggedIn" hidden></span>
+        </p>
+      </TextPage>
+    </BaseLayout>
+  ) : notReady ? (
+    <BaseLayout
+      title={`door ${number}`}
+      description="This door isn't ready yet."
+      noindex
+      pola={{ mood: 'annoyed', message: 'Someone has not uploaded this door yet. It was not me.' }}
+    >
+      <TextPage command={`$ aocn open ${Number(number)}`} title={`door ${number} · not ready`}>
+        <p>This door isn't ready yet. Nothing has been uploaded for it so far.</p>
+        <p>
+          <a href="/">back home</a>
         </p>
       </TextPage>
     </BaseLayout>
