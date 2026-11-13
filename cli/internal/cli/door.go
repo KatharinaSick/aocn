@@ -203,6 +203,29 @@ anything. The devcontainer runs it on every start.`,
 	}
 }
 
+func newWhereCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "where",
+		Short: "Print the open door's folder",
+		Long: `where prints the folder of the open door, and nothing if no door is open. The
+devcontainer's shell uses it to change into the door after aocn open and in every new terminal.`,
+		Args:   cobra.NoArgs,
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, err := door.Dir()
+			if err != nil {
+				return err
+			}
+			folder, ok, err := door.OpenFolder(dir)
+			if err != nil || !ok {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), folder)
+			return nil
+		},
+	}
+}
+
 func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
