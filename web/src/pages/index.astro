@@ -28,6 +28,7 @@ const scheduleSentence = `${DOOR_COUNT} doors, one every other day from ${format
 
 <BaseLayout
   description={description}
+  footerBelowFold={false}
   pola={{ mood: 'neutral', message: 'The aurora, a quiet cluster and me. I have waited all year for this.' }}
 >
   <script slot="head" type="application/ld+json" set:html={structuredData} />

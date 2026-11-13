@@ -27,6 +27,12 @@ interface Props {
   noindex?: boolean;
   /** POLARIS-7's line on this page: one sentence that fits it, in her mood of the day. */
   pola: { mood: PolaMood; message: string };
+  /**
+   * Keep the footer below the fold, so a page that almost fits the window never shows half
+   * of it: POLARIS-7's line sits at the window's bottom edge, and the footer is one scroll
+   * away. Off on the landing page, which is meant to fit on one screen, footer and all.
+   */
+  footerBelowFold?: boolean;
 }
 
 const DEFAULT_IMAGE = {
@@ -34,7 +40,7 @@ const DEFAULT_IMAGE = {
   alt: 'advent of cloud native: 12 CNCF projects, 12 broken things, one very tired station AI. POLARIS-7 under the aurora.',
 };
 
-const { title, description, image = DEFAULT_IMAGE, noindex = false, pola } = Astro.props;
+const { title, description, image = DEFAULT_IMAGE, noindex = false, pola, footerBelowFold = true } = Astro.props;
 
 const fullTitle = title ? `${title} · ${SITE_NAME}` : SITE_NAME;
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
@@ -106,15 +112,32 @@ const imageUrl = new URL(image.src, Astro.site);
   <body class="baseLayout">
     <Sky />
     <a class="baseLayoutSkipLink" href="#main">skip to content</a>
-    <SiteHeader />
-    <main class="baseLayoutMain" id="main" tabindex="-1">
-      <slot />
-    </main>
-    <div class="baseLayoutPrompt">
-      <PromptLine mood={pola.mood} message={pola.message} />
+    <div class:list={['baseLayoutScreen', { baseLayoutScreenFull: footerBelowFold }]}>
+      <SiteHeader />
+      <main class="baseLayoutMain" id="main" tabindex="-1">
+        <slot />
+      </main>
+      <div class="baseLayoutPrompt">
+        <PromptLine mood={pola.mood} message={pola.message} />
+      </div>
     </div>
     <SiteFooter />
     <VimKeys client:idle />
+    <script>
+      // See-through only while nothing is underneath: once the footer starts right below
+      // the prompt line, it rests in its own place and the sky shows behind it as designed.
+      // Without this script it simply stays solid.
+      const prompt = document.querySelector('.baseLayoutPrompt');
+      const footer = document.querySelector('.siteFooter');
+      const update = () => {
+        if (!prompt || !footer) return;
+        const atRest = footer.getBoundingClientRect().top <= prompt.getBoundingClientRect().bottom + 1;
+        prompt.classList.toggle('baseLayoutPromptAtRest', atRest);
+      };
+      update();
+      window.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update, { passive: true });
+    </script>
   </body>
 </html>
 
@@ -146,8 +169,29 @@ const imageUrl = new URL(image.src, Astro.site);
     flex-direction: column;
   }
 
-  /* Fills the space between header and prompt line, so the prompt line and footer sit at
-     the bottom even on a short page. */
+  /* Header, page and prompt line. Fills the body, so the prompt line and footer sit at the
+     bottom even on a short page. */
+  .baseLayoutScreen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* At least one window tall without the footer (see footerBelowFold), so the footer always
+     starts at or below the fold. svh, the window with the mobile address bar showing, so
+     the prompt line is fully in view on load. Above the vim statusline while that shows. */
+  .baseLayoutScreenFull {
+    min-height: 100vh;
+    min-height: 100svh;
+  }
+
+  :global(html.vimStatuslineShown) .baseLayoutScreenFull {
+    min-height: calc(100vh - var(--size-statusline));
+    min-height: calc(100svh - var(--size-statusline));
+  }
+
+  /* Fills the space between header and prompt line, so the prompt line sits at the bottom
+     even on a short page. */
   .baseLayoutMain {
     flex: 1;
     /* A column, so a page can let its content grow into the free height (see the landing). */
@@ -156,7 +200,38 @@ const imageUrl = new URL(image.src, Astro.site);
   }
 
   .baseLayoutPrompt {
-    margin: 0 var(--page-gutter);
+    padding: 0 var(--page-gutter);
+  }
+
+  /* Desktop: POLARIS-7's line sticks to the bottom of the window like a terminal's status
+     line, so she stays in view on a long page. It sits above the vim statusline while that
+     shows. Solid while the page scrolls underneath, see-through once it rests in its own
+     place above the footer (the script below). Anything scrolled into view stops above it:
+     its 16px padding twice plus one line of text. On mobile it scrolls with the page: two
+     pinned bars would leave too little room for the page itself. */
+  @media (min-width: 800px) {
+    :global(html) {
+      scroll-padding-bottom: calc(2 * var(--space-4) + var(--space-8));
+    }
+
+    :global(html.vimStatuslineShown) {
+      scroll-padding-bottom: calc(2 * var(--space-4) + var(--space-8) + var(--size-statusline));
+    }
+
+    .baseLayoutPrompt {
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      background: var(--color-panel);
+    }
+
+    :global(html.vimStatuslineShown) .baseLayoutPrompt {
+      bottom: var(--size-statusline);
+    }
+
+    .baseLayoutPromptAtRest {
+      background: transparent;
+    }
   }
 
   /* Above the sticky header. */
