@@ -1,0 +1,23 @@
+{
+  // The Codespace for door 15, which the door's "play" link on aocn.dev opens. It's the same
+  // as ../devcontainer.json, but opens the door on its own once it's created. Keep all of them
+  // the same but the door's number; a new image version goes into every one.
+  "name": "Advent of Cloud Native · door 15",
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.0",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/play",
+  "containerEnv": {
+    "AOCN_WORKSPACE": "/workspaces/${localWorkspaceFolderBasename}/play"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "files.exclude": {
+          ".gitignore": true
+        }
+      }
+    }
+  },
+  // Runs once, when the player gets the Codespace, never in a prebuild. Signs in with the
+  // Codespace's GitHub token on the way, so verify has nothing to ask.
+  "postCreateCommand": "aocn open 15"
+}
