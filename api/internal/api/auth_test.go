@@ -310,6 +310,28 @@ func TestCLILoginSwapsTheGitHubToken(t *testing.T) {
 	}
 }
 
+// With ?create=false, only someone who has an account gets signed in; nobody else gets one.
+func TestCLILoginWithoutCreating(t *testing.T) {
+	a := authAt(t, fakeOAuth{})
+	rec := postAs(a, "/auth/cli?create=false", "Bearer "+githubPlayerToken)
+	var missing noAccountResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &missing); err != nil || rec.Code != http.StatusNotFound || !missing.NoAccount {
+		t.Fatalf("no account yet: status %d, %v: %s", rec.Code, err, rec.Body.String())
+	}
+	if _, ok := a.store.saved[player.ID]; ok {
+		t.Fatal("an account was created anyway")
+	}
+
+	if rec := postAs(a, "/auth/cli", "Bearer "+githubPlayerToken); rec.Code != http.StatusOK {
+		t.Fatalf("creating: status %d", rec.Code)
+	}
+	rec = postAs(a, "/auth/cli?create=false", "Bearer "+githubPlayerToken)
+	var body cliLoginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK || body.Login != player.Login {
+		t.Errorf("with an account: status %d, %v: %s", rec.Code, err, rec.Body.String())
+	}
+}
+
 func TestCLILoginFailures(t *testing.T) {
 	a := authAt(t, fakeOAuth{})
 	for name, authorization := range map[string]string{

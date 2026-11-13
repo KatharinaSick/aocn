@@ -23,14 +23,16 @@ func newLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Sign in with GitHub",
 		Long: `login signs you in with your GitHub account, so aocn verify saves your progress under it.
-aocn verify asks by itself the first time, so you only need this to switch accounts.
+aocn verify asks by itself the first time, so you only need this to switch accounts, or to
+open a door early as a previewer.
 
 In a Codespace, it signs you in with the Codespace's own GitHub token. Anywhere else, you
 confirm a code on github.com. aocn gets no access to your repositories or anything private,
 only your public profile.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return signIn(cmd)
+			// Typing aocn login already says yes, so it explains a new account without asking.
+			return signIn(cmd, false)
 		},
 	}
 }
@@ -57,7 +59,6 @@ over with the original files, and moves yours aside.`,
 				return fmt.Errorf("door must be a number like 1, got %q", args[0])
 			}
 			if bundle == "" {
-				signInInCodespace(cmd)
 				downloaded, err := download(cmd, number)
 				if err != nil {
 					return err
@@ -280,6 +281,10 @@ gives you a hint. It works from any folder.`,
 func save(cmd *cobra.Command, number int, outcomes []check.Outcome) {
 	out := cmd.OutOrStdout()
 	saved, err := api.SendResults(cmd.Context(), number, outcomes)
+	if err == nil && saved.Passed {
+		fmt.Fprintf(out, "Saved for %s. Your card: %s\n", saved.Login, cardURL(saved.Login))
+		return
+	}
 	if err == nil {
 		fmt.Fprintf(out, "Saved for %s.\n", saved.Login)
 		return

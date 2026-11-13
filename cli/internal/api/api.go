@@ -91,11 +91,19 @@ type Session struct {
 	Login string `json:"login"`
 }
 
+// ErrNoAccount means signing in without creating found no aocn.dev account for the player.
+var ErrNoAccount = errors.New("no aocn.dev account yet")
+
 // SignIn hands a GitHub token, from the device flow or the Codespace, to the API once, and
 // returns the API's own token. aocn keeps only that: it carries the player's GitHub user ID,
-// so the API never has to ask GitHub who they are.
-func SignIn(ctx context.Context, githubToken string) (Session, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL()+"/auth/cli", nil)
+// so the API never has to ask GitHub who they are. Without create, it only signs in a player
+// who has an account already, and returns ErrNoAccount for anyone else.
+func SignIn(ctx context.Context, githubToken string, create bool) (Session, error) {
+	path := "/auth/cli"
+	if !create {
+		path += "?create=false"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL()+path, nil)
 	if err != nil {
 		return Session{}, err
 	}
@@ -105,6 +113,15 @@ func SignIn(ctx context.Context, githubToken string) (Session, error) {
 		return Session{}, fmt.Errorf("couldn't reach %s: %w", host(), err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && !create {
+		var body struct {
+			NoAccount bool `json:"noAccount"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body) == nil && body.NoAccount {
+			return Session{}, ErrNoAccount
+		}
+		return Session{}, fmt.Errorf("%s answered %s, try again in a few minutes", host(), resp.Status)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return Session{}, responseError(resp)
 	}

@@ -200,6 +200,41 @@ func TestSendResults(t *testing.T) {
 	}
 }
 
+// Signing in without creating asks the API with create=false, and tells a missing account
+// apart from other failures.
+func TestSignInWithoutCreating(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Query().Get("create") != "false":
+			_, _ = w.Write([]byte(`{"token":"api-token","login":"octo"}`))
+		case r.Header.Get("Authorization") == "Bearer gho_new":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":"no aocn.dev account yet","noAccount":true}`))
+		case r.Header.Get("Authorization") == "Bearer gho_lost":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`<html>not here</html>`))
+		default:
+			_, _ = w.Write([]byte(`{"token":"api-token","login":"octo"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("AOCN_API_URL", srv.URL)
+	signedOut(t)
+
+	if s, err := SignIn(context.Background(), "gho_known", false); err != nil || s.Login != "octo" {
+		t.Errorf("with an account: %+v, %v", s, err)
+	}
+	if _, err := SignIn(context.Background(), "gho_new", false); !errors.Is(err, ErrNoAccount) {
+		t.Errorf("without an account: %v, want ErrNoAccount", err)
+	}
+	if _, err := SignIn(context.Background(), "gho_lost", false); err == nil || errors.Is(err, ErrNoAccount) {
+		t.Errorf("some other 404: %v, want another error", err)
+	}
+	if s, err := SignIn(context.Background(), "gho_new", true); err != nil || s.Login != "octo" {
+		t.Errorf("creating: %+v, %v", s, err)
+	}
+}
+
 // Signing in hands the GitHub token to the API once and returns the API's own.
 func TestSignIn(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -217,11 +252,11 @@ func TestSignIn(t *testing.T) {
 	t.Setenv("AOCN_API_URL", srv.URL)
 	signedOut(t)
 
-	s, err := SignIn(context.Background(), "gho_good")
+	s, err := SignIn(context.Background(), "gho_good", true)
 	if err != nil || s != (Session{Token: "api-token", Login: "octo"}) {
 		t.Fatalf("got %+v, %v", s, err)
 	}
-	if _, err := SignIn(context.Background(), "gho_bad"); err == nil || !strings.Contains(err.Error(), "Run aocn login again") {
+	if _, err := SignIn(context.Background(), "gho_bad", true); err == nil || !strings.Contains(err.Error(), "Run aocn login again") {
 		t.Errorf("bad token: %v", err)
 	}
 }
