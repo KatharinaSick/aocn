@@ -18,7 +18,8 @@ import (
 // Codespace nobody sees GitHub's authorize screen, so this is where the player agrees.
 const accountNotice = `You don't have an aocn.dev account yet. Signing in creates one under your GitHub account,
 so aocn verify can save your progress: your GitHub login, user ID and avatar, and your
-results. Your profile is private unless you make it public on aocn.dev.`
+results. Your profile is private unless you make it public on aocn.dev.
+Privacy policy: https://aocn.dev/privacy`
 
 // errNotSignedIn ends aocn verify for a player who didn't want an account.
 var errNotSignedIn = errors.New("not signed in, so nothing was checked. aocn verify needs an account to save your progress")
