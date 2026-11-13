@@ -11,7 +11,8 @@
 //
 // With href it is a link that looks like a button, for actions that are a URL (the
 // calendar file). With download as well, the browser saves the file under that name (the
-// share image on your profile card).
+// share image on your profile card). With newTab as well, it opens in a new tab (the door's
+// Codespace, so the door page stays open next to it).
 import type { HTMLAttributes } from 'astro/types';
 
 interface Props extends HTMLAttributes<'button'> {
@@ -19,14 +20,23 @@ interface Props extends HTMLAttributes<'button'> {
   href?: string;
   /** With href: save the file under this name instead of opening it. */
   download?: string;
+  /** With href: open the link in a new tab. */
+  newTab?: boolean;
 }
 
-const { variant = 'secondary', type = 'button', href, download, class: className, ...attributes } = Astro.props;
+const { variant = 'secondary', type = 'button', href, download, newTab = false, class: className, ...attributes } = Astro.props;
 const classes = ['button', `button-${variant}`, className];
 ---
 
 {href ? (
-  <a class:list={classes} href={href} download={download} {...attributes}>
+  <a
+    class:list={classes}
+    href={href}
+    download={download}
+    target={newTab ? '_blank' : undefined}
+    rel={newTab ? 'noopener' : undefined}
+    {...attributes}
+  >
     <slot />
   </a>
 ) : (

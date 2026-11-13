@@ -57,18 +57,18 @@ func (failingReader) Read([]byte) (int, error) { return 0, errors.New("connectio
 
 // Both doors are uploaded, as they will be weeks before December.
 var uploaded = memoryStorage{
-	"doors/01/page.yaml":     "title: First\nstory: The story.\n",
+	"doors/01/page.yaml":     "title: First\nstory: The story.\nmission: [First goal]\npola: First words.\nmaintainer: {name: First person, role: r, url: 'https://example.com/first'}\n",
 	"doors/01/bundle.tar.gz": "bundle 1",
 	"doors/01/checks.yaml":   "- ready: [first-ns]\n- job: first-ns/cronjob/first-job\n",
 	"doors/01/hints.yaml":    "- first-hint\n- second-hint\n",
-	"doors/03/page.yaml":     "title: Second\nstory: Secret.\n",
+	"doors/03/page.yaml":     "title: Second\nstory: Secret.\nmission: [Secret goal]\npola: Secret words.\nmaintainer: {name: Secret person, role: r, url: 'https://example.com/secret'}\n",
 	"doors/03/bundle.tar.gz": "bundle 3",
 	"doors/03/checks.yaml":   "- ready: [secret-ns]\n- job: secret-ns/cronjob/secret-job\n",
 	"doors/03/hints.yaml":    "- secret-hint\n",
 }
 
 // Everything a closed door must never give away, from uploaded.
-var secrets = []string{"First", "The story", "Second", "Secret", "bundle", "first-ns", "secret-ns", "hint"}
+var secrets = []string{"First", "The story", "Second", "Secret", "goal", "words", "person", "bundle", "first-ns", "secret-ns", "hint"}
 
 // Who's in the tests. The previewer gets every door early, the door 3 previewer only door 3,
 // the player none.
