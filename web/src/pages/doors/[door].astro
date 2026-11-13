@@ -108,9 +108,15 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 
           <section class="doorMission" aria-labelledby="door-mission">
             <h2 class="doorHeading" id="door-mission">mission</h2>
-            <ul class="doorMissionList">
+            {/* A checklist players can tick while they play. The ticks stay in their browser. */}
+            <ul class="doorMissionList" data-door={page.door}>
               {page.mission.map((goal) => (
-                <li>{goal}</li>
+                <li>
+                  <label class="doorGoal">
+                    <input class="doorGoalBox" type="checkbox" value={goal} />
+                    <span>{goal}</span>
+                  </label>
+                </li>
               ))}
             </ul>
           </section>
@@ -285,6 +291,30 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 }
 
 <script>
+  // The mission's ticks, per door, in this browser only. Kept by the goal's text, so a goal that
+  // changes starts unticked. Storage can be missing (private windows): then ticks just don't stay.
+  const mission = document.querySelector<HTMLElement>('.doorMissionList');
+  if (mission) {
+    const key = `aocn-mission-${mission.dataset.door}`;
+    const boxes = [...mission.querySelectorAll<HTMLInputElement>('.doorGoalBox')];
+    let ticked: string[] = [];
+    try {
+      ticked = JSON.parse(localStorage.getItem(key) ?? '[]');
+    } catch {
+      ticked = [];
+    }
+    for (const box of boxes) {
+      box.checked = ticked.includes(box.value);
+      box.addEventListener('change', () => {
+        try {
+          localStorage.setItem(key, JSON.stringify(boxes.filter((b) => b.checked).map((b) => b.value)));
+        } catch {
+          // Not kept, but still ticked on the page.
+        }
+      });
+    }
+  }
+
   // "play locally" opens its steps in a dialog. Esc and "close" close it.
   const local = document.querySelector<HTMLDialogElement>('.doorLocal');
   document.querySelector('.doorPlayLocally')?.addEventListener('click', () => local?.showModal());
@@ -433,20 +463,39 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     color: var(--color-text-body);
   }
 
-  .doorMissionList li {
-    padding-left: var(--space-8);
-    text-indent: calc(-1 * var(--space-8));
+  /* Each goal is a real checkbox, drawn like a terminal: [ ] and [x]. It takes focus itself, so
+     it gets the site's focus ring; the goal's text next to it is its label, so it's clickable
+     too. */
+  .doorGoal {
+    display: grid;
+    grid-template-columns: var(--space-8) minmax(0, 1fr);
+    align-items: baseline;
+    cursor: pointer;
   }
 
-  /* A checklist box, silent for screen readers (the second line; browsers without the
-     alt-text syntax keep the first). */
-  .doorMissionList li::before {
-    content: '[ ]';
-    content: '[ ]' / '';
-    display: inline-block;
-    width: var(--space-8);
-    text-indent: 0;
+  .doorGoalBox {
+    appearance: none;
+    width: 3ch;
+    margin: 0;
+    font: inherit;
     color: var(--color-muted);
+    cursor: pointer;
+  }
+
+  .doorGoalBox::before {
+    content: '[ ]';
+  }
+
+  .doorGoalBox:checked {
+    color: var(--color-aurora);
+  }
+
+  .doorGoalBox:checked::before {
+    content: '[x]';
+  }
+
+  .doorGoal:has(.doorGoalBox:checked) {
+    color: var(--color-text-soft);
   }
 
 
