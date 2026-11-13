@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -59,13 +60,15 @@ var uploaded = memoryStorage{
 	"doors/01/page.yaml":     "title: First\nstory: The story.\n",
 	"doors/01/bundle.tar.gz": "bundle 1",
 	"doors/01/checks.yaml":   "- ready: [first-ns]\n- job: first-ns/cronjob/first-job\n",
+	"doors/01/hints.yaml":    "- first-hint\n- second-hint\n",
 	"doors/03/page.yaml":     "title: Second\nstory: Secret.\n",
 	"doors/03/bundle.tar.gz": "bundle 3",
 	"doors/03/checks.yaml":   "- ready: [secret-ns]\n- job: secret-ns/cronjob/secret-job\n",
+	"doors/03/hints.yaml":    "- secret-hint\n",
 }
 
 // Everything a closed door must never give away, from uploaded.
-var secrets = []string{"First", "The story", "Second", "Secret", "bundle", "first-ns", "secret-ns"}
+var secrets = []string{"First", "The story", "Second", "Secret", "bundle", "first-ns", "secret-ns", "hint"}
 
 // Who's in the tests. The previewer gets every door early, the door 3 previewer only door 3,
 // the player none.
@@ -171,6 +174,7 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 		Storage:  storage,
 		Pages:    &doors.Pages{Storage: storage},
 		Checks:   &doors.Checks{Storage: storage},
+		Hints:    &doors.Hints{Storage: storage},
 		Accounts: a.accounts,
 		Previewers: app.Previewers{
 			previewer.ID:      {All: true},
@@ -237,10 +241,10 @@ func TestClosedDoorsServeNothing(t *testing.T) {
 }
 
 // Every endpoint that hands out a door's content, for both doors.
-var closedPaths = []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/3", "/doors/3/bundle", "/doors/3/checks"}
+var closedPaths = []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/1/hints", "/doors/3", "/doors/3/bundle", "/doors/3/checks", "/doors/3/hints"}
 
 func TestClosedDoorSaysWhenItOpens(t *testing.T) {
-	for _, path := range []string{"/doors/3", "/doors/3/bundle", "/doors/3/checks"} {
+	for _, path := range []string{"/doors/3", "/doors/3/bundle", "/doors/3/checks", "/doors/3/hints"} {
 		rec := get(doorsAt(t, door1OpensAt, uploaded), path)
 		var body closedResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -282,6 +286,20 @@ func TestOpenDoorBundle(t *testing.T) {
 	}
 }
 
+func TestOpenDoorHints(t *testing.T) {
+	rec := get(doorsAt(t, door1OpensAt, uploaded), "/doors/1/hints")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+	var body hintsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Door != 1 || !slices.Equal(body.Hints, []string{"first-hint", "second-hint"}) {
+		t.Errorf("got %+v", body)
+	}
+}
+
 // A bundle that can't be read to the end must not look like a complete download.
 func TestBrokenBundleAbortsTheResponse(t *testing.T) {
 	defer func() {
@@ -305,7 +323,7 @@ func TestOnlyOpenDoorsAreServed(t *testing.T) {
 
 func TestUnknownDoors(t *testing.T) {
 	h := doorsAt(t, door3OpensAt.Add(time.Hour), uploaded)
-	for _, path := range []string{"/doors/0", "/doors/2", "/doors/4", "/doors/-1", "/doors/one", "/doors/01x", "/doors/2/bundle", "/doors/2/checks",
+	for _, path := range []string{"/doors/0", "/doors/2", "/doors/4", "/doors/-1", "/doors/one", "/doors/01x", "/doors/2/bundle", "/doors/2/checks", "/doors/2/hints",
 		// 2 and 4 are days without a door.
 		// One spelling per door: these all parse as 1, which is open.
 		"/doors/01", "/doors/+1", "/doors/1.0", "/doors/%201", "/doors/01/bundle", "/doors/+1/bundle", "/doors/01/checks"} {
@@ -321,7 +339,7 @@ func TestUnknownDoors(t *testing.T) {
 
 func TestOpenDoorNotUploaded(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, memoryStorage{})
-	for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks"} {
+	for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/1/hints"} {
 		rec := get(h, path)
 		var body notReadyResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusServiceUnavailable {
@@ -357,7 +375,7 @@ func TestClosedDoorNotUploadedIsJustClosed(t *testing.T) {
 func TestDoorResponsesAreNotCached(t *testing.T) {
 	for _, now := range []time.Time{door1OpensAt.Add(-time.Second), door1OpensAt} {
 		h := doorsAt(t, now, uploaded)
-		for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/9"} {
+		for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/1/hints", "/doors/9"} {
 			// A previewer's early door most of all: nobody else may ever get that copy.
 			for _, token := range []string{"", previewerToken} {
 				if got := getAs(h, path, token).Header().Get("Cache-Control"); got != "no-store" {

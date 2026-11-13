@@ -157,6 +157,23 @@ func Checks(ctx context.Context, door int) ([]check.Check, error) {
 	return body.Checks, nil
 }
 
+// Hints returns the door's hints, in order. They aren't in the bundle, so the door's folder
+// doesn't give them away.
+func Hints(ctx context.Context, door int) ([]string, error) {
+	resp, err := do(ctx, http.MethodGet, fmt.Sprintf("/doors/%d/hints", door), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Hints []string `json:"hints"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+		return nil, fmt.Errorf("reading door %d's hints: %w", door, err)
+	}
+	return body.Hints, nil
+}
+
 // Saved is what the API kept of a run.
 type Saved struct {
 	Passed bool   `json:"passed"`

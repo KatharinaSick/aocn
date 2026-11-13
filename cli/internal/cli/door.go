@@ -309,8 +309,12 @@ again after the last one shows the last one again.`,
 			if !ok {
 				return fmt.Errorf("no door is open yet. Start one with: aocn open 1")
 			}
-			hints, err := door.Hints(filepath.Join(dir, open.Folder))
+			hints, err := api.Hints(cmd.Context(), open.Number)
 			if err != nil {
+				var closed *api.ClosedError
+				if errors.As(err, &closed) {
+					return fmt.Errorf("not yet: %w", closed)
+				}
 				return err
 			}
 			out := cmd.OutOrStdout()

@@ -8,31 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-
-	"gopkg.in/yaml.v3"
 )
-
-// hintsFile lists a door's hints in order, from a nudge to nearly the solution:
-//
-//	- Look at what talks to what.
-//	- ...
-const hintsFile = "hints.yaml"
-
-// Hints returns the hints in folder's .aocn/hints.yaml, or none if the door has no hints.
-func Hints(folder string) ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(folder, ToolDir, hintsFile))
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var hints []string
-	if err := yaml.Unmarshal(data, &hints); err != nil {
-		return nil, fmt.Errorf("reading %s/%s: %w", ToolDir, hintsFile, err)
-	}
-	return hints, nil
-}
 
 // seenFile counts the hints each door has shown, by door number. It lives next to the doors
 // and outside their folders, so opening a door again doesn't reset it.
