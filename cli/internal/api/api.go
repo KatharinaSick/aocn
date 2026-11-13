@@ -91,9 +91,9 @@ type Session struct {
 	Login string `json:"login"`
 }
 
-// SignIn hands the GitHub token from the device flow to the API, once, and returns the API's
-// own token. aocn keeps only that: it carries the player's GitHub user ID, so the API never
-// has to ask GitHub who they are.
+// SignIn hands a GitHub token, from the device flow or the Codespace, to the API once, and
+// returns the API's own token. aocn keeps only that: it carries the player's GitHub user ID,
+// so the API never has to ask GitHub who they are.
 func SignIn(ctx context.Context, githubToken string) (Session, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL()+"/auth/cli", nil)
 	if err != nil {

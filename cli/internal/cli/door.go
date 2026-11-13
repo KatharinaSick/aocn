@@ -13,7 +13,6 @@ import (
 	"golang.org/x/term"
 
 	"github.com/katharinasick/aocn/cli/internal/api"
-	"github.com/katharinasick/aocn/cli/internal/auth"
 	"github.com/katharinasick/aocn/cli/internal/check"
 	"github.com/katharinasick/aocn/cli/internal/cluster"
 	"github.com/katharinasick/aocn/cli/internal/door"
@@ -23,32 +22,15 @@ func newLoginCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "login",
 		Short: "Sign in with GitHub",
-		Long: `login signs you in with your GitHub account, so aocn verify can save your progress under
-it. You confirm a code on github.com; aocn gets no access to your repositories or anything
-private, only your public profile.`,
+		Long: `login signs you in with your GitHub account, so aocn verify saves your progress under it.
+aocn verify asks by itself the first time, so you only need this to switch accounts.
+
+In a Codespace, it signs you in with the Codespace's own GitHub token. Anywhere else, you
+confirm a code on github.com. aocn gets no access to your repositories or anything private,
+only your public profile.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			out := cmd.OutOrStdout()
-			code, err := auth.StartDeviceFlow(cmd.Context())
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(out, "Open %s and enter this code: %s\n\nWaiting for GitHub…\n", code.VerificationURI, code.UserCode)
-			githubToken, err := auth.WaitForToken(cmd.Context(), code)
-			if err != nil {
-				return err
-			}
-			// The GitHub token is handed to the API once and then forgotten; aocn keeps the
-			// API's own token.
-			session, err := api.SignIn(cmd.Context(), githubToken)
-			if err != nil {
-				return err
-			}
-			if err := auth.SaveToken(session.Token); err != nil {
-				return fmt.Errorf("saving your sign-in: %w", err)
-			}
-			fmt.Fprintf(out, "Signed in as %s.\n", session.Login)
-			return nil
+			return signIn(cmd)
 		},
 	}
 }
@@ -75,6 +57,7 @@ over with the original files, and moves yours aside.`,
 				return fmt.Errorf("door must be a number like 1, got %q", args[0])
 			}
 			if bundle == "" {
+				signInInCodespace(cmd)
 				downloaded, err := download(cmd, number)
 				if err != nil {
 					return err
@@ -230,9 +213,9 @@ func newVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify",
 		Short: "Check the open door",
-		Long: `verify runs the open door's checks against the cluster and shows which pass. Once you're
-signed in (aocn login), it saves the result under your GitHub account. If you're stuck, aocn
-hint gives you a hint. It works from any folder.`,
+		Long: `verify runs the open door's checks against the cluster, shows which pass and saves the
+result under your GitHub account. The first time, it signs you in. If you're stuck, aocn hint
+gives you a hint. It works from any folder.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := door.Dir()
@@ -245,6 +228,10 @@ hint gives you a hint. It works from any folder.`,
 			}
 			if !ok {
 				return fmt.Errorf("no door is open yet. Start one with: aocn open 1")
+			}
+			// Before the checks run, so every run is saved.
+			if err := ensureSignedIn(cmd); err != nil {
+				return err
 			}
 
 			// Always from the API, also for a door opened from a local bundle: nothing in the
@@ -292,17 +279,10 @@ hint gives you a hint. It works from any folder.`,
 // worked never changes what verify found, so a problem here is a note, not an error.
 func save(cmd *cobra.Command, number int, outcomes []check.Outcome) {
 	out := cmd.OutOrStdout()
-	token, err := auth.Token()
-	if err == nil && token == "" {
-		fmt.Fprintln(out, "Not saved: sign in with aocn login to keep your progress.")
-		return
-	}
+	saved, err := api.SendResults(cmd.Context(), number, outcomes)
 	if err == nil {
-		var saved api.Saved
-		if saved, err = api.SendResults(cmd.Context(), number, outcomes); err == nil {
-			fmt.Fprintf(out, "Saved for %s.\n", saved.Login)
-			return
-		}
+		fmt.Fprintf(out, "Saved for %s.\n", saved.Login)
+		return
 	}
 	if cmd.Context().Err() != nil {
 		return
