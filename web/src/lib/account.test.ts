@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountAt, fetchMe, loginHref, profileHref } from './account';
+import { accountAt, fetchMe, isProfilePath, loginHref, profileHref } from './account';
 
 const opensAt = new Date('2026-12-01T06:00:00+01:00');
 const me = { login: 'octo', avatarUrl: 'https://example.com/a.png' };
@@ -49,5 +49,18 @@ describe('loginHref', () => {
 describe('profileHref', () => {
   it('is the card under /u/', () => {
     expect(profileHref('Octo-Cat')).toBe('/u/Octo-Cat');
+  });
+});
+
+describe('isProfilePath', () => {
+  it('is a card under /u/, with or without a trailing slash', () => {
+    expect(isProfilePath('/u/Octo-Cat')).toBe(true);
+    expect(isProfilePath('/u/Octo-Cat/')).toBe(true);
+  });
+
+  it('is nothing else', () => {
+    expect(isProfilePath('/u/')).toBe(false);
+    expect(isProfilePath('/u/Octo-Cat/card.png')).toBe(false);
+    expect(isProfilePath('/doors/3')).toBe(false);
   });
 });
