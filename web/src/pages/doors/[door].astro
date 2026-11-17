@@ -126,8 +126,20 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
             <ol class="doorStepList">
               <li class="doorStep">
                 <span class="doorStepName">01 start</span>
+                {/* Playing needs an account, so it starts with logging in: GitHub's own screen
+                    says what that means, before anything is played. Once logged in, the
+                    Codespace and verify sign in with the same account without asking. The page
+                    is cached for everyone, so the script below swaps in the play buttons. */}
                 <div class="doorStepBody">
-                  <div class="doorPlayButtons">
+                  <div class="doorLogInToPlay">
+                    <Button variant="primary" href={loginHref(`/doors/${page.door}`)}>
+                      log in to play
+                    </Button>
+                    <p class="doorStepQuiet doorLogInNote">
+                      login with GitHub, so your progress is saved · <a href="/privacy">privacy</a>
+                    </p>
+                  </div>
+                  <div class="doorPlayButtons" hidden>
                     <Button variant="primary" href={playUrl(page.door)} newTab>
                       play in codespaces
                     </Button>
@@ -350,6 +362,16 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
       loggedIn.textContent = `logged in as @${me.login} · not a previewer of this door`;
       loggedIn.hidden = false;
       preview.querySelector<HTMLElement>('.doorPreviewLogIn')!.hidden = true;
+    });
+  }
+
+  // Logged in: the play buttons take the place of "log in to play".
+  const play = document.querySelector<HTMLElement>('.doorPlayButtons');
+  if (play) {
+    fetchMe().then((me) => {
+      if (!me) return;
+      play.hidden = false;
+      document.querySelector<HTMLElement>('.doorLogInToPlay')!.hidden = true;
     });
   }
 </script>
@@ -606,6 +628,27 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);
+  }
+
+  .doorPlayButtons[hidden],
+  .doorLogInToPlay[hidden] {
+    display: none;
+  }
+
+  .doorLogInToPlay {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+  }
+
+  .doorLogInNote {
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .doorLogInNote a {
+    color: var(--color-text-soft);
   }
 
   .doorLocal {
