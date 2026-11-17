@@ -34,6 +34,25 @@ func ensureSignedIn(cmd *cobra.Command) error {
 	return signIn(cmd, true)
 }
 
+// signInQuietly signs in a player who has an aocn.dev account already, with the Codespace's
+// GitHub token. It never creates an account and never asks, so it can run where nobody
+// answers, like the Codespace's start. Outside a Codespace, already signed in, or if it fails,
+// it does nothing: the player just stays signed out.
+func signInQuietly(cmd *cobra.Command) {
+	if token, err := auth.Token(); err != nil || token != "" {
+		return
+	}
+	githubToken := auth.CodespaceToken(os.Getenv)
+	if githubToken == "" {
+		return
+	}
+	session, err := api.SignIn(cmd.Context(), githubToken, false)
+	if err != nil {
+		return
+	}
+	_ = keep(cmd, session)
+}
+
 // signIn signs the player in with GitHub: in a Codespace with the Codespace's own token, and
 // otherwise, or if that fails, with a code to confirm on github.com. Either way the GitHub
 // token goes to the API, and aocn keeps the API's. Someone who has an account is signed in

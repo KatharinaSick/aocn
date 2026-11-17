@@ -1,7 +1,8 @@
 {
   // A Codespace for any door: open one with aocn open N. A door's "play" link opens the one in
   // door-NN/ instead, which opens that door by itself. The image brings the tools, the aocn
-  // CLI and the settings. A new image version goes into every one.
+  // CLI and the settings. A new image version goes in here; .github/scripts/devcontainers.sh
+  // then writes it into every door's.
   "name": "Advent of Cloud Native · any door",
   "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.0",
   // Players only see their doors, not this repo: the file tree and the terminal start in

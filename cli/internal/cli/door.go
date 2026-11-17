@@ -58,57 +58,7 @@ over with the original files, and moves yours aside.`,
 			if err != nil || number < 1 {
 				return fmt.Errorf("door must be a number like 1, got %q", args[0])
 			}
-			if bundle == "" {
-				downloaded, err := download(cmd, number)
-				if err != nil {
-					return err
-				}
-				defer os.Remove(downloaded)
-				bundle = downloaded
-			}
-			folder, err := door.BundleFolder(bundle, number)
-			if err != nil {
-				return err
-			}
-			dir, err := door.Dir()
-			if err != nil {
-				return err
-			}
-			out := cmd.OutOrStdout()
-
-			if door.Exists(dir, folder) {
-				if !reset {
-					reset = askReset(cmd, folder)
-				}
-				if reset {
-					aside, err := door.MoveAside(dir, folder)
-					if err != nil {
-						return err
-					}
-					fmt.Fprintf(out, "Moved your files to doors/%s/.\n", aside)
-				}
-			}
-			if door.Exists(dir, folder) {
-				// The player's files stay, but the door's own files come from the newest bundle.
-				if err := door.Refresh(bundle, dir, folder); err != nil {
-					return err
-				}
-			} else if err := door.Extract(bundle, dir); err != nil {
-				return err
-			}
-
-			if err := cluster.Recreate(cmd.Context(), out, door.KindConfig(filepath.Join(dir, folder))); err != nil {
-				return err
-			}
-			// Saved before init, so a restart picks the door up even if init failed.
-			if err := door.SaveOpen(dir, door.Open{Number: number, Folder: folder}); err != nil {
-				return err
-			}
-			if err := door.Init(cmd.Context(), out, filepath.Join(dir, folder)); err != nil {
-				return err
-			}
-			fmt.Fprintf(out, "\nDoor %d is open. Its files are in doors/%s/.\n", number, folder)
-			return nil
+			return openDoor(cmd, number, bundle, reset)
 		},
 	}
 	cmd.Flags().StringVar(&bundle, "bundle", "", "use a local bundle instead of downloading it")
@@ -116,9 +66,69 @@ over with the original files, and moves yours aside.`,
 	return cmd
 }
 
+// openDoor puts the door's files in place and starts it on a fresh cluster, from bundle or,
+// without one, from a download. aocn open runs it, and aocn resume the first time a door's own
+// Codespace starts.
+func openDoor(cmd *cobra.Command, number int, bundle string, reset bool) error {
+	if bundle == "" {
+		downloaded, err := download(cmd, number)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(downloaded)
+		bundle = downloaded
+	}
+	folder, err := door.BundleFolder(bundle, number)
+	if err != nil {
+		return err
+	}
+	dir, err := door.Dir()
+	if err != nil {
+		return err
+	}
+	out := cmd.OutOrStdout()
+
+	if door.Exists(dir, folder) {
+		if !reset {
+			reset = askReset(cmd, folder)
+		}
+		if reset {
+			aside, err := door.MoveAside(dir, folder)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "Moved your files to doors/%s/.\n", aside)
+		}
+	}
+	if door.Exists(dir, folder) {
+		// The player's files stay, but the door's own files come from the newest bundle.
+		if err := door.Refresh(bundle, dir, folder); err != nil {
+			return err
+		}
+	} else if err := door.Extract(bundle, dir); err != nil {
+		return err
+	}
+
+	if err := cluster.Recreate(cmd.Context(), out, door.KindConfig(filepath.Join(dir, folder))); err != nil {
+		return err
+	}
+	// Saved before init, so a restart picks the door up even if init failed.
+	if err := door.SaveOpen(dir, door.Open{Number: number, Folder: folder}); err != nil {
+		return err
+	}
+	if err := door.Init(cmd.Context(), out, filepath.Join(dir, folder)); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "\nDoor %d is open. Its files are in doors/%s/.\n", number, folder)
+	return nil
+}
+
 // download fetches the door's bundle into a temporary file and returns its path. Before the
 // door opens, it says when to come back.
 func download(cmd *cobra.Command, number int) (string, error) {
+	// In a Codespace, a player who has an account is signed in first: a previewer gets their
+	// door early without aocn login, and verify has nothing to ask later.
+	signInQuietly(cmd)
 	f, err := os.CreateTemp("", fmt.Sprintf("aocn-door-%02d-*.tar.gz", number))
 	if err != nil {
 		return "", err
@@ -165,7 +175,11 @@ func newResumeCmd() *cobra.Command {
 		Use:   "resume",
 		Short: "Start the open door again after a container restart",
 		Long: `resume starts the cluster again and re-runs the open door's init, without resetting
-anything. The devcontainer runs it on every start.`,
+anything. The devcontainer runs it on every start.
+
+With no door open yet, it opens the door in AOCN_DOOR, which a door's own Codespace sets. So
+that Codespace opens its door on its first start, and tries again on every start until the
+door is open.`,
 		Args:   cobra.NoArgs,
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -174,8 +188,15 @@ anything. The devcontainer runs it on every start.`,
 				return err
 			}
 			open, ok, err := door.LoadOpen(dir)
-			if err != nil || !ok {
+			if err != nil {
 				return err
+			}
+			if !ok {
+				number, err := doorFromEnv(os.Getenv)
+				if err != nil || number == 0 {
+					return err
+				}
+				return openDoor(cmd, number, "", false)
 			}
 			out := cmd.OutOrStdout()
 			folder := filepath.Join(dir, open.Folder)
@@ -185,6 +206,20 @@ anything. The devcontainer runs it on every start.`,
 			return door.Init(cmd.Context(), out, folder)
 		},
 	}
+}
+
+// doorFromEnv reads AOCN_DOOR, the door a door's own Codespace opens by itself. 0 means none
+// is set. getenv is os.Getenv outside of tests.
+func doorFromEnv(getenv func(string) string) (int, error) {
+	text := strings.TrimSpace(getenv("AOCN_DOOR"))
+	if text == "" {
+		return 0, nil
+	}
+	number, err := strconv.Atoi(text)
+	if err != nil || number < 1 {
+		return 0, fmt.Errorf("AOCN_DOOR must be a door number like 1, got %q", text)
+	}
+	return number, nil
 }
 
 func newWhereCmd() *cobra.Command {
@@ -283,6 +318,11 @@ func save(cmd *cobra.Command, number int, outcomes []check.Outcome) {
 	saved, err := api.SendResults(cmd.Context(), number, outcomes)
 	if err == nil && saved.Passed {
 		fmt.Fprintf(out, "Saved for %s. Your card: %s\n", saved.Login, cardURL(saved.Login))
+		// Every door has its own Codespace, and each one keeps using the player's free storage
+		// until it's deleted.
+		if os.Getenv("CODESPACES") == "true" {
+			fmt.Fprintln(out, "Done with this door? Delete this Codespace at https://github.com/codespaces, so it doesn't use up your free storage.")
+		}
 		return
 	}
 	if err == nil {
