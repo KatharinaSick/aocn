@@ -286,7 +286,6 @@ type noAccountResponse struct {
 // handleCLILogin swaps a GitHub token, from aocn login's device flow or a Codespace, for this
 // API's own, once. The CLI keeps only this API's token, which carries the GitHub user ID: no
 // request after this asks GitHub who it is.
-
 func handleCLILogin(log app.Logger, a Auth) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

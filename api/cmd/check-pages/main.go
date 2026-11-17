@@ -1,6 +1,6 @@
-// check-pages checks a door's page.yaml, checks.yaml and hints.yaml with exactly the rules the API reads
-// them by, so a file the API can't read fails a pull request in the challenges repository
-// instead of showing up as a stuck door, or a door nobody can verify, when it opens.
+// check-pages checks a door's page.yaml, checks.yaml and hints.yaml with exactly the rules the
+// API reads them by, so a file the API can't read fails a pull request in the challenges
+// repository instead of showing up as a stuck door, or a door nobody can verify, when it opens.
 //
 //	go run ./cmd/check-pages path/to/page.yaml path/to/checks.yaml path/to/hints.yaml ...
 package main
