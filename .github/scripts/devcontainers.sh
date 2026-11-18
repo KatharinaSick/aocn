@@ -31,7 +31,8 @@ render() {
   // (aocn resume) opens door $n on the first start, and starts it again on every start after
   // that. Before the door opens, a previewer signs in with aocn login and opens it with
   // aocn open $n. Start commands never run in a prebuild, so no door is downloaded before it
-  // opens.
+  // opens. On creation, it links play/README.md, the "your station is starting" page, to
+  // door $n's page; git ignores that change, like the door's README later.
   "name": "Advent of Cloud Native · door $nn",
   "image": "$image",
   "workspaceFolder": "/workspaces/\${localWorkspaceFolderBasename}/play",
@@ -39,7 +40,7 @@ render() {
     "AOCN_WORKSPACE": "/workspaces/\${localWorkspaceFolderBasename}/play",
     "AOCN_DOOR": "$n"
   },
-  "postCreateCommand": "git update-index --skip-worktree README.md",
+  "postCreateCommand": "git update-index --skip-worktree README.md && sed -i 's|page: https://aocn.dev\$|page: https://aocn.dev/doors/$n|' README.md",
   "customizations": {
     "codespaces": {
       "openFiles": ["play/README.md"]
