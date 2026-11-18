@@ -283,7 +283,7 @@ type noAccountResponse struct {
 	NoAccount bool   `json:"noAccount"`
 }
 
-// handleCLILogin swaps a GitHub token, from aocn login's device flow or a Codespace, for this
+// handleCLILogin swaps the GitHub token from the CLI's device flow for this
 // API's own, once. The CLI keeps only this API's token, which carries the GitHub user ID: no
 // request after this asks GitHub who it is.
 func handleCLILogin(log app.Logger, a Auth) http.Handler {

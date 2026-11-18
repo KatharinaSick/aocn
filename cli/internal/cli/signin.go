@@ -14,8 +14,8 @@ import (
 	"github.com/katharinasick/aocn/cli/internal/auth"
 )
 
-// accountNotice is what signing in means for someone without an aocn.dev account yet. In a
-// Codespace nobody sees GitHub's authorize screen, so this is where the player agrees.
+// accountNotice is what signing in means for someone without an aocn.dev account yet. GitHub's
+// authorize screen only says what aocn may read, so this is where the player agrees.
 const accountNotice = `You don't have an aocn.dev account yet. Signing in creates one under your GitHub account,
 so aocn verify can save your progress: your GitHub login, user ID and avatar, and your
 results. Your profile is private unless you make it public on aocn.dev.
@@ -34,50 +34,38 @@ func ensureSignedIn(cmd *cobra.Command) error {
 	return signIn(cmd, true)
 }
 
-// signInQuietly signs in a player who has an aocn.dev account already, with the Codespace's
-// GitHub token. It never creates an account and never asks, so it can run where nobody
-// answers, like the Codespace's start. Outside a Codespace, already signed in, or if it fails,
-// it does nothing: the player just stays signed out.
-func signInQuietly(cmd *cobra.Command) {
-	if token, err := auth.Token(); err != nil || token != "" {
-		return
-	}
-	githubToken := auth.CodespaceToken(os.Getenv)
-	if githubToken == "" {
-		return
-	}
-	session, err := api.SignIn(cmd.Context(), githubToken, false)
-	if err != nil {
-		return
-	}
-	_ = keep(cmd, session)
-}
-
-// signIn signs the player in with GitHub: in a Codespace with the Codespace's own token, and
-// otherwise, or if that fails, with a code to confirm on github.com. Either way the GitHub
-// token goes to the API, and aocn keeps the API's. Someone who has an account is signed in
-// right away; for anyone else it explains the account first, and with ask, asks.
+// signIn signs the player in with GitHub, with a code to confirm on github.com. The GitHub
+// token goes to the API, and aocn keeps the API's. A Codespace's own GITHUB_TOKEN can't be
+// used: the API only takes tokens GitHub issued to aocn.dev's OAuth app. Someone who has an
+// account is signed in right away; for anyone else it explains the account first, and with
+// ask, asks.
 func signIn(cmd *cobra.Command, ask bool) error {
 	out := cmd.OutOrStdout()
-	if githubToken := auth.CodespaceToken(os.Getenv); githubToken != "" {
-		session, err := api.SignIn(cmd.Context(), githubToken, false)
-		switch {
-		case err == nil:
-			return keep(cmd, session)
-		case errors.Is(err, api.ErrNoAccount):
-			return createAccount(cmd, githubToken, ask)
-		case cmd.Context().Err() != nil:
-			return err
-		}
-		fmt.Fprintf(out, "Signing in with your Codespace didn't work (%v), so let's do it on github.com.\n", err)
-	}
-
 	code, err := auth.StartDeviceFlow(cmd.Context())
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Sign in with GitHub: open %s and enter %s\n\nWaiting for GitHub…\n", code.VerificationURI, code.UserCode)
-	githubToken, err := auth.WaitForToken(cmd.Context(), code)
+	s := screenHere()
+	if ask {
+		// From aocn verify, which the player ran to check their work, not to sign in.
+		fmt.Fprintln(out, "aocn verify saves your progress under your GitHub account, so sign in once for this station.")
+	}
+	fmt.Fprint(out, signInScreen(code, s))
+	if s.canOpen {
+		if err := waitForEnter(cmd.Context(), os.Stdin); err != nil {
+			return err
+		}
+		openBrowser(out, code.VerificationURI)
+	}
+	var githubToken string
+	if s.styled {
+		fmt.Fprintln(out)
+		stop := spin(out, "Waiting for you to confirm the code on GitHub…")
+		githubToken, err = auth.WaitForToken(cmd.Context(), code)
+		stop()
+	} else {
+		githubToken, err = auth.WaitForToken(cmd.Context(), code)
+	}
 	if err != nil {
 		return err
 	}
@@ -121,7 +109,11 @@ func keep(cmd *cobra.Command, session api.Session) error {
 	if err := auth.SaveToken(session.Token); err != nil {
 		return fmt.Errorf("saving your sign-in: %w", err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Signed in as %s.\n", session.Login)
+	if screenHere().styled {
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s✓%s Signed in as %s%s%s.\n\n", green, reset, bold, session.Login, reset)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "Signed in as %s.\n", session.Login)
+	}
 	return nil
 }
 
