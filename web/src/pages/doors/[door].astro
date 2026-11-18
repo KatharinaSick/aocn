@@ -32,6 +32,7 @@ import {
   videoEmbedUrl,
 } from '../../lib/doorPage';
 import { formatStationTime, isDoor } from '../../lib/doors';
+import { notFound } from '../../lib/notFound';
 
 export const prerender = false;
 
@@ -42,8 +43,7 @@ const answer = await fetchDoor(import.meta.env.API_URL, Astro.params.door ?? '',
 });
 const cacheHeaders = doorCacheHeaders(answer);
 if (answer.state === 'missing') {
-  // An empty 404 makes Astro answer with the prerendered 404 page.
-  return new Response(null, { status: 404, headers: cacheHeaders });
+  return notFound(Astro.url, cacheHeaders);
 }
 if (answer.state === 'closed') {
   Astro.response.status = 404;

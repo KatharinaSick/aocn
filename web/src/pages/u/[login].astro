@@ -15,6 +15,7 @@ import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { DOOR_COUNT, DOOR_NUMBERS, formatStationDay, formatStationDayLong, isDoorOpen } from '../../lib/doors';
 import { SESSION_COOKIE } from '../../lib/doorPage';
+import { notFound } from '../../lib/notFound';
 import { assess, doorCells, fetchProfile, profileCacheHeaders, profileLine } from '../../lib/profile';
 
 export const prerender = false;
@@ -24,8 +25,7 @@ const answer = await fetchProfile(import.meta.env.API_URL, Astro.params.login ??
 });
 const cacheHeaders = profileCacheHeaders(answer);
 if (answer.state === 'missing') {
-  // An empty 404 makes Astro answer with the prerendered 404 page.
-  return new Response(null, { status: 404, headers: cacheHeaders });
+  return notFound(Astro.url, cacheHeaders);
 }
 if (answer.state === 'unavailable') {
   Astro.response.status = 503;
