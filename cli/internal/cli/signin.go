@@ -45,8 +45,27 @@ func signIn(cmd *cobra.Command, ask bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Sign in with GitHub: open %s and enter %s\n\nWaiting for GitHub…\n", code.VerificationURI, code.UserCode)
-	githubToken, err := auth.WaitForToken(cmd.Context(), code)
+	s := screenHere()
+	if ask {
+		// From aocn verify, which the player ran to check their work, not to sign in.
+		fmt.Fprintln(out, "aocn verify saves your progress under your GitHub account, so sign in once for this station.")
+	}
+	fmt.Fprint(out, signInScreen(code, s))
+	if s.canOpen {
+		if err := waitForEnter(cmd.Context(), os.Stdin); err != nil {
+			return err
+		}
+		openBrowser(out, code.VerificationURI)
+	}
+	var githubToken string
+	if s.styled {
+		fmt.Fprintln(out)
+		stop := spin(out, "Waiting for you to confirm the code on GitHub…")
+		githubToken, err = auth.WaitForToken(cmd.Context(), code)
+		stop()
+	} else {
+		githubToken, err = auth.WaitForToken(cmd.Context(), code)
+	}
 	if err != nil {
 		return err
 	}
@@ -90,7 +109,11 @@ func keep(cmd *cobra.Command, session api.Session) error {
 	if err := auth.SaveToken(session.Token); err != nil {
 		return fmt.Errorf("saving your sign-in: %w", err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Signed in as %s.\n", session.Login)
+	if screenHere().styled {
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s✓%s Signed in as %s%s%s.\n\n", green, reset, bold, session.Login, reset)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "Signed in as %s.\n", session.Login)
+	}
 	return nil
 }
 
