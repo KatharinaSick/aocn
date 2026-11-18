@@ -4,20 +4,30 @@
   // CLI and the settings. A new image version goes in here; .github/scripts/devcontainers.sh
   // then writes it into every door's.
   "name": "Advent of Cloud Native · any door",
-  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.1",
-  // Players only see their doors, not this repo: the file tree and the terminal start in
-  // play/, and aocn open puts doors there. The image's shell then moves into the open door.
-  // play/ is committed, so it's there in every clone.
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.2",
+  // Players only see their door, not this repo: the file tree and the terminal start in
+  // play/, and aocn open puts the door's files right there. play/ is committed, so it's there
+  // in every clone.
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/play",
   "containerEnv": {
     "AOCN_WORKSPACE": "/workspaces/${localWorkspaceFolderBasename}/play"
   },
+  // play/README.md says the station is starting, until the door's README.md replaces it. Git
+  // ignores that change, so Source Control doesn't show a change nobody made on purpose.
+  "postCreateCommand": "git update-index --skip-worktree README.md",
   "customizations": {
+    // Opens play/README.md when the Codespace is created, so it's the first thing players see.
+    "codespaces": {
+      "openFiles": ["play/README.md"]
+    },
     "vscode": {
       "settings": {
-        // play/.gitignore keeps the doors out of git; players don't need to see it.
+        // play/.gitignore keeps the door out of git, and aocn keeps which door is open and
+        // which hints it showed in the other two. Players don't need to see them.
         "files.exclude": {
-          ".gitignore": true
+          ".gitignore": true,
+          ".open.json": true,
+          ".hints-seen.json": true
         }
       }
     }

@@ -13,17 +13,24 @@ import (
 	"time"
 )
 
-// Dir is the folder in the workspace that holds one folder per door. Doors stay after the
-// next one opens, so players keep their files and notes.
-func Dir() (string, error) {
-	workspace := os.Getenv("AOCN_WORKSPACE")
-	if workspace == "" {
-		var err error
-		if workspace, err = os.Getwd(); err != nil {
-			return "", err
-		}
+// Station is the folder the player plays in, which holds the open door's files: AOCN_WORKSPACE
+// in the devcontainer (play/ in KatharinaSick/aocn), or the current folder anywhere else. A
+// station holds one door. Every door has its own Codespace, so its own station.
+func Station() (string, error) {
+	if workspace := os.Getenv("AOCN_WORKSPACE"); workspace != "" {
+		return workspace, nil
 	}
-	return filepath.Join(workspace, "doors"), nil
+	return os.Getwd()
+}
+
+// AsideDir is where a door's files go when the player starts over: nothing is ever deleted.
+const AsideDir = ".old"
+
+// stationOwn is what belongs to the station, not to the door in it: play/'s .gitignore and
+// README.md (the "your station is starting" page, which the door's README.md replaces), the
+// files aocn keeps its state in, and the files moved aside.
+var stationOwn = map[string]bool{
+	".gitignore": true, Readme: true, stateFile: true, seenFile: true, AsideDir: true,
 }
 
 // Open is the door that runs in the cluster right now.
@@ -32,7 +39,7 @@ type Open struct {
 	Folder string `json:"folder"`
 }
 
-// stateFile lives next to the doors, so it survives a container rebuild like they do.
+// stateFile lives in the station, so it survives a container rebuild like the door's files do.
 const stateFile = ".open.json"
 
 // SaveOpen remembers which door runs in the cluster.
@@ -60,34 +67,39 @@ func LoadOpen(dir string) (Open, bool, error) {
 	return open, true, nil
 }
 
-// OpenFolder returns the folder of the door that runs in the cluster, or false if no door was
-// opened yet or its folder is gone.
-func OpenFolder(dir string) (string, bool, error) {
-	open, ok, err := LoadOpen(dir)
+// IsOpen reports whether a door is open in station: it was opened, and its .aocn is there.
+func IsOpen(station string) (bool, error) {
+	_, ok, err := LoadOpen(station)
 	if err != nil || !ok {
-		return "", false, err
+		return false, err
 	}
-	folder := filepath.Join(dir, open.Folder)
-	if info, err := os.Stat(folder); err != nil || !info.IsDir() {
-		return "", false, nil
-	}
-	return folder, true, nil
+	info, err := os.Stat(filepath.Join(station, ToolDir))
+	return err == nil && info.IsDir(), nil
 }
 
-// MoveAside renames dir/folder to dir/folder.old-<time>, so starting a door fresh never
-// deletes what the player wrote. It returns the new name.
-func MoveAside(dir, folder string) (string, error) {
-	aside := folder + ".old-" + time.Now().Format("20060102-150405")
-	if err := os.Rename(filepath.Join(dir, folder), filepath.Join(dir, aside)); err != nil {
+// MoveAside moves the door's files in station, the player's and aocn's, to
+// .old/<folder>-<time>/, so starting over never deletes what the player wrote. The station's
+// own files stay. It returns where the files went, like ".old/01-example-20261201-060000".
+func MoveAside(station, folder string) (string, error) {
+	aside := filepath.Join(AsideDir, folder+"-"+time.Now().Format("20060102-150405"))
+	if err := os.MkdirAll(filepath.Join(station, aside), 0o755); err != nil {
 		return "", err
 	}
+	entries, err := os.ReadDir(station)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		// The door's README.md goes too, so the folder aside is the whole door. The open after
+		// this writes it again.
+		if stationOwn[e.Name()] && e.Name() != Readme {
+			continue
+		}
+		if err := os.Rename(filepath.Join(station, e.Name()), filepath.Join(station, aside, e.Name())); err != nil {
+			return "", err
+		}
+	}
 	return aside, nil
-}
-
-// Exists reports whether dir/folder is there.
-func Exists(dir, folder string) bool {
-	_, err := os.Stat(filepath.Join(dir, folder))
-	return err == nil
 }
 
 // Init runs the door's .aocn/init.sh, which brings the door to its start state. It's safe to

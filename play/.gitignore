@@ -1,4 +1,6 @@
-# Players play here: the Codespace opens this folder, and aocn open puts doors in it. Nothing
-# in it is committed but this file.
+# Players play here: the Codespace opens this folder, and aocn open puts the door's files right
+# in it. Nothing in it is committed but this file and README.md, the "your station is starting"
+# page that the door's own README.md replaces. The devcontainers tell git to ignore that change.
 *
 !.gitignore
+!README.md

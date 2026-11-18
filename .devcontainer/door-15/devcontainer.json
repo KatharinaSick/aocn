@@ -6,19 +6,26 @@
   // (aocn resume) opens door 15 on the first start, and starts it again on every start after
   // that. Before the door opens, a previewer signs in with aocn login and opens it with
   // aocn open 15. Start commands never run in a prebuild, so no door is downloaded before it
-  // opens.
+  // opens. On creation, it links play/README.md, the "your station is starting" page, to
+  // door 15's page; git ignores that change, like the door's README later.
   "name": "Advent of Cloud Native · door 15",
-  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.1",
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.2",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/play",
   "containerEnv": {
     "AOCN_WORKSPACE": "/workspaces/${localWorkspaceFolderBasename}/play",
     "AOCN_DOOR": "15"
   },
+  "postCreateCommand": "git update-index --skip-worktree README.md && sed -i 's|page: https://aocn.dev$|page: https://aocn.dev/doors/15|' README.md",
   "customizations": {
+    "codespaces": {
+      "openFiles": ["play/README.md"]
+    },
     "vscode": {
       "settings": {
         "files.exclude": {
-          ".gitignore": true
+          ".gitignore": true,
+          ".open.json": true,
+          ".hints-seen.json": true
         }
       }
     }

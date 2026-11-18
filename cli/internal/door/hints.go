@@ -10,8 +10,8 @@ import (
 	"strconv"
 )
 
-// seenFile counts the hints each door has shown, by door number. It lives next to the doors
-// and outside their folders, so opening a door again doesn't reset it.
+// seenFile counts the hints each door has shown, by door number. It's the station's, not the
+// door's, so starting over with --reset doesn't reset it.
 const seenFile = ".hints-seen.json"
 
 // NextHint returns the index of the hint to show for door number, out of total, and

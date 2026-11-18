@@ -86,59 +86,101 @@ func TestExtract(t *testing.T) {
 		entry{name: "01-example/", dir: true},
 		entry{name: "01-example/setup.sh", mode: 0o755},
 		entry{name: "01-example/manifests/policy.yaml", mode: 0o644},
+		entry{name: "01-example/README.md", mode: 0o644},
 	)
-	dir := t.TempDir()
-	if err := Extract(bundle, dir); err != nil {
+	station := t.TempDir()
+	// The station's "your station is starting" page, which the door's README replaces.
+	if err := os.WriteFile(filepath.Join(station, "README.md"), []byte("starting"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Extract(bundle, station); err != nil {
 		t.Fatal(err)
 	}
 
-	info, err := os.Stat(filepath.Join(dir, "01-example", "setup.sh"))
+	info, err := os.Stat(filepath.Join(station, "setup.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Mode()&0o100 == 0 {
 		t.Errorf("setup.sh lost its executable bit: %v", info.Mode())
 	}
-	if _, err := os.Stat(filepath.Join(dir, "01-example", "manifests", "policy.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(station, "manifests", "policy.yaml")); err != nil {
 		t.Error(err)
 	}
-	// Only the door's folder is there.
-	entries, _ := os.ReadDir(dir)
-	if len(entries) != 1 {
-		t.Errorf("want only 01-example in %s, got %d entries", dir, len(entries))
+	if data, _ := os.ReadFile(filepath.Join(station, "README.md")); string(data) != "01-example/README.md" {
+		t.Errorf("README.md is still the station's: %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(station, "01-example")); err == nil {
+		t.Error("the bundle's folder was unpacked too; the files belong right in the station")
 	}
 }
 
 func TestRefresh(t *testing.T) {
-	dir := t.TempDir()
+	station := t.TempDir()
 	if err := Extract(writeBundle(t,
 		entry{name: "01-example/manifests/policy.yaml", mode: 0o644},
+		entry{name: "01-example/README.md", mode: 0o644},
 		entry{name: "01-example/.aocn/init.sh", mode: 0o755},
 		entry{name: "01-example/.aocn/old.sh", mode: 0o755},
-	), dir); err != nil {
+	), station); err != nil {
 		t.Fatal(err)
 	}
-	policy := filepath.Join(dir, "01-example", "manifests", "policy.yaml")
-	if err := os.WriteFile(policy, []byte("the player's change"), 0o644); err != nil {
-		t.Fatal(err)
+	policy := filepath.Join(station, "manifests", "policy.yaml")
+	readme := filepath.Join(station, "README.md")
+	for _, f := range []string{policy, readme} {
+		if err := os.WriteFile(f, []byte("changed"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	newer := writeBundle(t,
 		entry{name: "01-example/manifests/policy.yaml", mode: 0o644},
+		entry{name: "01-example/README.md", mode: 0o644},
 		entry{name: "01-example/.aocn/init.sh", mode: 0o755},
 		entry{name: "01-example/.aocn/workloads/app.yaml", mode: 0o644},
 	)
-	if err := Refresh(newer, dir, "01-example"); err != nil {
+	if err := Refresh(newer, station); err != nil {
 		t.Fatal(err)
 	}
 
-	if data, _ := os.ReadFile(policy); string(data) != "the player's change" {
+	if data, _ := os.ReadFile(policy); string(data) != "changed" {
 		t.Errorf("the player's file changed: %q", data)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "01-example", ".aocn", "workloads", "app.yaml")); err != nil {
+	if data, _ := os.ReadFile(readme); string(data) != "01-example/README.md" {
+		t.Errorf("README.md is aocn's and should be the newest: %q", data)
+	}
+	if _, err := os.Stat(filepath.Join(station, ".aocn", "workloads", "app.yaml")); err != nil {
 		t.Errorf("the newer .aocn wasn't unpacked: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "01-example", ".aocn", "old.sh")); err == nil {
+	if _, err := os.Stat(filepath.Join(station, ".aocn", "old.sh")); err == nil {
 		t.Error("a file that's not in the newer bundle is still in .aocn")
+	}
+}
+
+func TestStrangers(t *testing.T) {
+	bundle := writeBundle(t,
+		entry{name: "01-example/manifests/policy.yaml", mode: 0o644},
+		entry{name: "01-example/.aocn/init.sh", mode: 0o755},
+	)
+	station := t.TempDir()
+	// The station's own files, and the door's from an open that failed halfway.
+	for _, name := range []string{".gitignore", "README.md", ".open.json", ".hints-seen.json", ".old", "manifests"} {
+		if err := os.MkdirAll(filepath.Join(station, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := Strangers(bundle, station); err != nil || len(got) != 0 {
+		t.Fatalf("a station with only its own and the door's files: got %v, %v", got, err)
+	}
+
+	if err := os.WriteFile(filepath.Join(station, "notes.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Strangers(bundle, station); err != nil || len(got) != 1 || got[0] != "notes.txt" {
+		t.Errorf("got %v, %v, want [notes.txt]", got, err)
+	}
+
+	if got, err := Strangers(bundle, filepath.Join(station, "not-there")); err != nil || got != nil {
+		t.Errorf("a station that doesn't exist yet: got %v, %v", got, err)
 	}
 }

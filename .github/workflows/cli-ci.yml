@@ -1,0 +1,50 @@
+name: CLI
+
+# The CLI's tests, vet and formatting on every pull request that touches it. Players install
+# whatever is on main once cli/VERSION changes (cli-release.yml), so a broken CLI should fail
+# here first.
+on:
+  pull_request:
+    paths:
+      - 'cli/**'
+      - '.github/workflows/cli-ci.yml'
+
+# Read-only, so cancelling a superseded run costs nothing.
+concurrency:
+  group: cli-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The Go version comes from go.mod rather than being pinned twice, so it cannot drift
+      # from what devbox installs.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      - name: Format
+        working-directory: cli
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Not formatted with gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+        working-directory: cli
+
+      - name: Test
+        run: go test -race ./...
+        working-directory: cli
