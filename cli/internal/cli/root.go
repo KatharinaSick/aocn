@@ -15,10 +15,10 @@ func NewRootCmd(version string) *cobra.Command {
 		Short: "Play Advent of Cloud Native",
 		Long: `aocn opens the doors of Advent of Cloud Native and checks your solutions.
 
-  aocn login        sign in with GitHub
   aocn open 1       start door 1 on a fresh cluster
-  aocn verify       check the open door
+  aocn verify       check the open door, and save your progress
   aocn hint         get a hint for the open door
+  aocn login        sign in with GitHub, or switch accounts
 
 More at https://aocn.dev`,
 		SilenceUsage: true,
@@ -36,6 +36,7 @@ More at https://aocn.dev`,
 		newLoginCmd(),
 		newOpenCmd(),
 		newResumeCmd(),
+		newWhereCmd(),
 		newVerifyCmd(),
 		newCheckCmd(),
 		newHintCmd(),

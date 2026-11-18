@@ -1,0 +1,27 @@
+name: Devcontainers
+
+# Every door's devcontainer.json is written by .github/scripts/devcontainers.sh. This fails a
+# PR that edits one by hand, bumps the image in only some of them, or adds a door to the
+# schedule without its Codespace.
+on:
+  pull_request:
+    paths:
+      - '.devcontainer/**'
+      - 'schedule.yaml'
+      - '.github/scripts/devcontainers.sh'
+      - '.github/workflows/devcontainers.yml'
+
+concurrency:
+  group: devcontainers-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: .github/scripts/devcontainers.sh --check

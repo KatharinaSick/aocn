@@ -60,6 +60,20 @@ func LoadOpen(dir string) (Open, bool, error) {
 	return open, true, nil
 }
 
+// OpenFolder returns the folder of the door that runs in the cluster, or false if no door was
+// opened yet or its folder is gone.
+func OpenFolder(dir string) (string, bool, error) {
+	open, ok, err := LoadOpen(dir)
+	if err != nil || !ok {
+		return "", false, err
+	}
+	folder := filepath.Join(dir, open.Folder)
+	if info, err := os.Stat(folder); err != nil || !info.IsDir() {
+		return "", false, nil
+	}
+	return folder, true, nil
+}
+
 // MoveAside renames dir/folder to dir/folder.old-<time>, so starting a door fresh never
 // deletes what the player wrote. It returns the new name.
 func MoveAside(dir, folder string) (string, error) {

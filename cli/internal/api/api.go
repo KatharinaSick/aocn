@@ -91,11 +91,19 @@ type Session struct {
 	Login string `json:"login"`
 }
 
-// SignIn hands the GitHub token from the device flow to the API, once, and returns the API's
-// own token. aocn keeps only that: it carries the player's GitHub user ID, so the API never
-// has to ask GitHub who they are.
-func SignIn(ctx context.Context, githubToken string) (Session, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL()+"/auth/cli", nil)
+// ErrNoAccount means signing in without creating found no aocn.dev account for the player.
+var ErrNoAccount = errors.New("no aocn.dev account yet")
+
+// SignIn hands a GitHub token, from the device flow or the Codespace, to the API once, and
+// returns the API's own token. aocn keeps only that: it carries the player's GitHub user ID,
+// so the API never has to ask GitHub who they are. Without create, it only signs in a player
+// who has an account already, and returns ErrNoAccount for anyone else.
+func SignIn(ctx context.Context, githubToken string, create bool) (Session, error) {
+	path := "/auth/cli"
+	if !create {
+		path += "?create=false"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, BaseURL()+path, nil)
 	if err != nil {
 		return Session{}, err
 	}
@@ -105,6 +113,15 @@ func SignIn(ctx context.Context, githubToken string) (Session, error) {
 		return Session{}, fmt.Errorf("couldn't reach %s: %w", host(), err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound && !create {
+		var body struct {
+			NoAccount bool `json:"noAccount"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body) == nil && body.NoAccount {
+			return Session{}, ErrNoAccount
+		}
+		return Session{}, fmt.Errorf("%s answered %s, try again in a few minutes", host(), resp.Status)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return Session{}, responseError(resp)
 	}
@@ -155,6 +172,23 @@ func Checks(ctx context.Context, door int) ([]check.Check, error) {
 		return nil, fmt.Errorf("reading door %d's checks: %w", door, err)
 	}
 	return body.Checks, nil
+}
+
+// Hints returns the door's hints, in order. They aren't in the bundle, so the door's folder
+// doesn't give them away.
+func Hints(ctx context.Context, door int) ([]string, error) {
+	resp, err := do(ctx, http.MethodGet, fmt.Sprintf("/doors/%d/hints", door), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Hints []string `json:"hints"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+		return nil, fmt.Errorf("reading door %d's hints: %w", door, err)
+	}
+	return body.Hints, nil
 }
 
 // Saved is what the API kept of a run.

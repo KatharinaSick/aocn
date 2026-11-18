@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { doorCacheHeaders, doorDescription, fetchDoor, paragraphs, readDoorAnswer } from './doorPage';
+import {
+  doorCacheHeaders,
+  doorDescription,
+  fetchDoor,
+  fetchThumbnail,
+  paragraphs,
+  playUrl,
+  readDoorAnswer,
+  videoEmbedUrl,
+} from './doorPage';
 
 const opensAt = new Date('2026-12-01T05:00:00Z');
 const openBody = {
@@ -7,8 +16,11 @@ const openBody = {
   opensAt: '2026-12-01T06:00:00+01:00',
   title: 'Door',
   story: 'One.',
-  log: 'Noted.',
+  mission: ['First goal', 'Second goal'],
+  pola: 'Noted.',
   videoId: '',
+  maintainer: { name: 'Jane Doe', role: 'Example maintainer', url: 'https://example.com/jane' },
+  docs: [{ title: 'Example docs', url: 'https://example.com/docs' }],
 };
 
 describe('readDoorAnswer', () => {
@@ -16,8 +28,43 @@ describe('readDoorAnswer', () => {
     expect(readDoorAnswer(200, openBody)).toEqual({
       state: 'open',
       preview: false,
-      page: { door: 1, opensAt, title: 'Door', story: 'One.', log: 'Noted.', videoId: '' },
+      page: {
+        door: 1,
+        opensAt,
+        title: 'Door',
+        story: 'One.',
+        mission: ['First goal', 'Second goal'],
+        pola: 'Noted.',
+        videoId: '',
+        maintainer: { name: 'Jane Doe', role: 'Example maintainer', url: 'https://example.com/jane' },
+        docs: [{ title: 'Example docs', url: 'https://example.com/docs' }],
+      },
     });
+  });
+
+  it('reads what an older API leaves out as empty', () => {
+    const answer = readDoorAnswer(200, { door: 1, opensAt: openBody.opensAt, title: 'Door', story: 'One.', mission: ['a', 2] });
+    expect(answer.state === 'open' && answer.page).toMatchObject({
+      mission: ['a'],
+      pola: '',
+      videoId: '',
+      maintainer: { name: '', role: '', url: '' },
+      docs: [],
+    });
+  });
+
+  it('only keeps https links', () => {
+    const answer = readDoorAnswer(200, {
+      ...openBody,
+      maintainer: { name: 'Jane', role: 'r', url: 'javascript:alert(1)' },
+      docs: [
+        { title: 'fine', url: 'https://example.com' },
+        { title: 'plain http', url: 'http://example.com' },
+        { title: 'no url' },
+      ],
+    });
+    expect(answer.state === 'open' && answer.page.maintainer.url).toBe('');
+    expect(answer.state === 'open' && answer.page.docs).toEqual([{ title: 'fine', url: 'https://example.com' }]);
   });
 
   it('reads a closed door with its opening time', () => {
@@ -152,5 +199,48 @@ describe('doorDescription', () => {
 
   it('cuts a long paragraph at a word', () => {
     expect(doorDescription('aaa bbb ccc ddd', 10)).toBe('aaa bbb…');
+  });
+});
+
+describe('playUrl', () => {
+  it("opens a Codespace from the door's own config, reusing one the player has", () => {
+    const url = new URL(playUrl(1));
+    expect(url.origin + url.pathname).toBe('https://codespaces.new/KatharinaSick/aocn');
+    expect(url.searchParams.get('devcontainer_path')).toBe('.devcontainer/door-01/devcontainer.json');
+    expect(url.searchParams.get('quickstart')).toBe('1');
+    expect(new URL(playUrl(23)).searchParams.get('devcontainer_path')).toBe('.devcontainer/door-23/devcontainer.json');
+  });
+});
+
+describe('videoEmbedUrl', () => {
+  it('uses the no-cookie player and keeps the ID in its place', () => {
+    expect(videoEmbedUrl('abc_-1')).toBe('https://www.youtube-nocookie.com/embed/abc_-1?autoplay=1&rel=0');
+    expect(videoEmbedUrl('a/../b?c')).toBe('https://www.youtube-nocookie.com/embed/a%2F..%2Fb%3Fc?autoplay=1&rel=0');
+  });
+});
+
+describe('fetchThumbnail', () => {
+  it('takes the large thumbnail when there is one', async () => {
+    const fetchFn = vi.fn(async () => new Response('large'));
+    const image = await fetchThumbnail('abc', fetchFn as unknown as typeof fetch);
+    expect(new TextDecoder().decode(image!)).toBe('large');
+    expect(fetchFn).toHaveBeenCalledWith('https://i.ytimg.com/vi/abc/maxresdefault.jpg');
+  });
+
+  it('falls back to the one every video has', async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      url.endsWith('maxresdefault.jpg') ? new Response(null, { status: 404 }) : new Response('small'),
+    );
+    const image = await fetchThumbnail('abc', fetchFn as unknown as typeof fetch);
+    expect(new TextDecoder().decode(image!)).toBe('small');
+  });
+
+  it('is null when YouTube has none or is unreachable', async () => {
+    const missing = vi.fn(async () => new Response(null, { status: 404 }));
+    expect(await fetchThumbnail('abc', missing as unknown as typeof fetch)).toBeNull();
+    const down = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    expect(await fetchThumbnail('abc', down as unknown as typeof fetch)).toBeNull();
   });
 });

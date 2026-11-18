@@ -1,0 +1,4 @@
+# Players play here: the Codespace opens this folder, and aocn open puts doors in it. Nothing
+# in it is committed but this file.
+*
+!.gitignore

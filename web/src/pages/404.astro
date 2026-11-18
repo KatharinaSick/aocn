@@ -16,6 +16,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     <p class="notFoundCommand">$ vim <span data-not-found-path>this-page</span></p>
     <h1 class="notFoundTitle">not found<span class="notFoundUnderscore" aria-hidden="true">_</span></h1>
     <p class="notFoundError">E484: Can't open file <span data-not-found-path>this-page</span></p>
+    {/* Shown by the script below: a private card is a 404 for anyone but its owner. */}
+    <p class="notFoundYourCard" hidden>
+      is this your card? <a data-your-card-login href="/api/auth/github/login">log in</a> to see it
+    </p>
     <p class="notFoundBack">
       <span class="notFoundPrompt" aria-hidden="true">$ cd ~</span>
       <a href="/">back home</a>
@@ -24,6 +28,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 </BaseLayout>
 
 <script>
+  import { fetchMe, isProfilePath, loginHref } from '../lib/account';
+
   // The page is prerendered, so only the browser knows which path was asked for.
   let path = location.pathname;
   try {
@@ -32,6 +38,17 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     // A malformed escape like /%E0: show the path as it was typed.
   }
   for (const element of document.querySelectorAll('[data-not-found-path]')) element.textContent = path;
+
+  // A private card is a 404 for anyone but its owner, who may just not be logged in here, like
+  // after aocn verify links to it. Asked on every card path, so it never tells whether a login
+  // exists.
+  if (isProfilePath(location.pathname)) {
+    fetchMe().then((me) => {
+      if (me) return;
+      document.querySelector<HTMLAnchorElement>('[data-your-card-login]')!.href = loginHref(location.pathname);
+      document.querySelector<HTMLElement>('.notFoundYourCard')!.hidden = false;
+    });
+  }
 </script>
 
 <style>

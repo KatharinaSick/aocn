@@ -34,6 +34,7 @@ type Doors struct {
 	Storage  doors.Storage
 	Pages    *doors.Pages
 	Checks   *doors.Checks
+	Hints    *doors.Hints
 	// Accounts finds a signed-in caller's login, for saving their results.
 	Accounts Accounts
 	// Previewers says who gets which doors early.
@@ -77,6 +78,11 @@ type pageResponse struct {
 	// Preview means the door isn't open: the caller only gets it as a previewer.
 	Preview bool `json:"preview,omitempty"`
 	doors.Page
+}
+
+type hintsResponse struct {
+	Door  int      `json:"door"`
+	Hints []string `json:"hints"`
 }
 
 type checksResponse struct {
@@ -246,6 +252,23 @@ func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 			return
 		}
 		writeJSON(w, http.StatusOK, checksResponse{Door: a.door, Checks: checks})
+	})
+}
+
+// handleDoorHints hands out an open door's hints, for aocn hint. They're not in the bundle,
+// so a player can't read them in the door's folder without asking for them.
+func handleDoorHints(log app.Logger, d Doors) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a, ok := d.gate(log, w, r, false, false)
+		if !ok {
+			return
+		}
+		hints, err := d.Hints.Get(r.Context(), a.door, d.now())
+		if err != nil {
+			writeMissingDoor(log, w, a.door, "hints", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, hintsResponse{Door: a.door, Hints: hints})
 	})
 }
 

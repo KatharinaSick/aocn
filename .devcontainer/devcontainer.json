@@ -1,5 +1,25 @@
 {
-  // The Codespace players open. The image brings the tools, the aocn CLI and the settings.
-  "name": "Advent of Cloud Native",
-  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.1.0"
+  // A Codespace for any door: open one with aocn open N. A door's "play" link opens the one in
+  // door-NN/ instead, which opens that door by itself. The image brings the tools, the aocn
+  // CLI and the settings. A new image version goes in here; .github/scripts/devcontainers.sh
+  // then writes it into every door's.
+  "name": "Advent of Cloud Native · any door",
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.0",
+  // Players only see their doors, not this repo: the file tree and the terminal start in
+  // play/, and aocn open puts doors there. The image's shell then moves into the open door.
+  // play/ is committed, so it's there in every clone.
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/play",
+  "containerEnv": {
+    "AOCN_WORKSPACE": "/workspaces/${localWorkspaceFolderBasename}/play"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        // play/.gitignore keeps the doors out of git; players don't need to see it.
+        "files.exclude": {
+          ".gitignore": true
+        }
+      }
+    }
+  }
 }

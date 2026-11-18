@@ -1,5 +1,7 @@
 ---
-// One door: its story, POLARIS-7's log and the interview, from the door's page.yaml.
+// One door, from the door's page.yaml: everything a player reads, on one screen with the
+// footer, like the landing page. A short story, the mission, how to play and the interview. The door's README in the Codespace doesn't need reading;
+// this page is enough.
 //
 // Door gating: rendered on each request from GET /doors/{n}, never at build time, so a
 // door's content can't be in the build before it opens. The API decides whether the door is
@@ -15,10 +17,20 @@
 // come back in a few minutes, with a 503 and no caching. That tells nobody more than the 404
 // would: the API only fails this way for a door that's open, or for every door at once. Only
 // doors in the schedule get there; any other number is a 404 without asking the API.
+import Button from '../../components/Button.astro';
+import PolaFace from '../../components/PolaFace.astro';
 import TextPage from '../../components/TextPage.astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { loginHref } from '../../lib/account';
-import { SESSION_COOKIE, doorCacheHeaders, doorDescription, fetchDoor, paragraphs } from '../../lib/doorPage';
+import {
+  SESSION_COOKIE,
+  doorCacheHeaders,
+  doorDescription,
+  fetchDoor,
+  paragraphs,
+  playUrl,
+  videoEmbedUrl,
+} from '../../lib/doorPage';
 import { formatStationTime, isDoor } from '../../lib/doors';
 
 export const prerender = false;
@@ -59,46 +71,187 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 {
   page ? (
     <BaseLayout
+      footerBelowFold={false}
       title={`door ${number} · ${page.title}`}
       description={doorDescription(page.story)}
       noindex={preview}
-      pola={
-        preview
-          ? { mood: 'worried', message: 'You are early. Please do not tell the crew what is behind this door.' }
-          : { mood: 'annoyed', message: `Door ${number} is open. Please do not break anything else.` }
-      }
+      pola={{ mood: 'annoyed', message: page.pola }}
     >
-      <TextPage command={`$ aocn open ${page.door}`} title={`door ${number} · ${page.title}`}>
-        {preview && (
-          <p class="doorPreviewNote">
-            preview · opens{' '}
-            <time datetime={page.opensAt.toISOString()}>{formatStationTime(page.opensAt)}</time> · only you see this
-          </p>
-        )}
-        <div class="doorStory">
-          {paragraphs(page.story).map((p) => (
-            <p>{p}</p>
-          ))}
+      <article class="door">
+        <header class="doorHeader">
+          {preview && (
+            <p class="doorPreviewNote">
+              preview · opens{' '}
+              <time datetime={page.opensAt.toISOString()}>{formatStationTime(page.opensAt)}</time> · only you see this
+            </p>
+          )}
+          <p class="doorCommand">$ aocn open {page.door}</p>
+          <h1 class="doorTitle">
+            door {number} · {page.title.toLowerCase()}<span class="doorUnderscore" aria-hidden="true">_</span>
+          </h1>
+        </header>
+
+        <div class="doorText">
+          {/* The story is POLARIS-7's log, so it's signed: a player who meets her late still
+              knows who is talking. */}
+          <figure class="doorStory">
+            <blockquote class="doorStoryText">
+              {paragraphs(page.story).map((p) => (
+                <p>{p}</p>
+              ))}
+            </blockquote>
+            <figcaption class="doorStorySignature">
+              <PolaFace mood="annoyed" label={null} />
+              <span>— POLARIS-7</span>
+            </figcaption>
+          </figure>
+
+          <section class="doorMission" aria-labelledby="door-mission">
+            <h2 class="doorHeading" id="door-mission">mission</h2>
+            {/* A checklist players can tick while they play. The ticks stay in their browser. */}
+            <ul class="doorMissionList" data-door={page.door}>
+              {page.mission.map((goal) => (
+                <li>
+                  <label class="doorGoal">
+                    <input class="doorGoalBox" type="checkbox" value={goal} />
+                    <span>{goal}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section class="doorSteps" aria-labelledby="door-steps">
+            <h2 class="doorHeading" id="door-steps">how to play</h2>
+            <ol class="doorStepList">
+              <li class="doorStep">
+                <span class="doorStepName">01 start</span>
+                {/* Playing needs an account, so it starts with logging in: GitHub's own screen
+                    says what that means, before anything is played. Once logged in, the
+                    Codespace and verify sign in with the same account without asking. The page
+                    is cached for everyone, so the script below swaps in the play buttons. */}
+                <div class="doorStepBody">
+                  <div class="doorLogInToPlay">
+                    <Button variant="primary" href={loginHref(`/doors/${page.door}`)}>
+                      log in to play
+                    </Button>
+                    <p class="doorStepQuiet doorLogInNote">
+                      login with GitHub, so your progress is saved · <a href="/privacy">privacy</a>
+                    </p>
+                  </div>
+                  <div class="doorPlayButtons" hidden>
+                    <Button variant="primary" href={playUrl(page.door)} newTab>
+                      play in codespaces
+                    </Button>
+                    <Button class="doorPlayLocally" aria-haspopup="dialog">play locally</Button>
+                  </div>
+                </div>
+              </li>
+              <li class="doorStep">
+                <span class="doorStepName">02 watch</span>
+                <p class="doorStepBody">the interview with {page.maintainer.name}, while your station starts</p>
+              </li>
+              <li class="doorStep">
+                <span class="doorStepName">03 fix</span>
+                <p class="doorStepBody">
+                  the mission <span class="doorStepQuiet">· stuck?</span> <code class="doorCommandInline">aocn hint</code>
+                </p>
+              </li>
+              <li class="doorStep">
+                <span class="doorStepName">04 verify</span>
+                <p class="doorStepBody">
+                  <code class="doorCommandInline">aocn verify</code>{' '}
+                  <span class="doorStepQuiet">
+                    · solved?{' '}
+                    <a href="https://github.com/codespaces" target="_blank" rel="noopener">delete the codespace</a>
+                  </span>
+                </p>
+              </li>
+            </ol>
+            <p class="doorStepsMore"><a href="/how-it-works#man-playing">more on how to play</a></p>
+          </section>
+
+          <dialog class="doorLocal" aria-labelledby="door-local-title">
+            <h2 class="doorLocalTitle" id="door-local-title">## play locally</h2>
+            <p class="doorLocalNeeds">
+              You need Docker or Podman, and an editor with dev container support. VS Code with the Dev Containers
+              extension is tested; with Podman, set its <strong>Docker Path</strong> setting to <code>podman</code>.
+            </p>
+            <ol class="doorLocalSteps">
+              <li>
+                Clone the repository:
+                <pre class="doorLocalCode"><code>git clone https://github.com/KatharinaSick/aocn</code></pre>
+              </li>
+              <li>Open the folder in your editor and reopen it in a container.</li>
+              <li>
+                Pick <strong>door {number}</strong> when it asks which container. It opens the door by itself; wait
+                until that's done.
+              </li>
+              <li>
+                Fix it, then run <code>aocn verify</code>. The first time, it asks you to confirm a code on github.com,
+                so your progress is saved.
+              </li>
+            </ol>
+            <form method="dialog" class="doorLocalActions">
+              <Button type="submit">close</Button>
+            </form>
+          </dialog>
         </div>
-        {page.log && (
-          <blockquote class="doorLog">
-            {paragraphs(page.log).map((p) => (
-              <p>{p}</p>
-            ))}
-            <footer class="doorLogSignature">— POLARIS-7</footer>
-          </blockquote>
-        )}
-        {page.videoId && (
-          <p>
-            <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(page.videoId)}`} target="_blank" rel="noopener">
-              watch the interview
-            </a>
-          </p>
-        )}
-      </TextPage>
+
+        <aside class="doorSide" aria-label="interview and docs">
+          {/* Every door has an interview. Until it's uploaded, its place says so. */}
+          <figure class="doorVideo">
+            {page.videoId ? (
+              <div class="doorVideoFrame" data-embed={videoEmbedUrl(page.videoId)}>
+                {/* From aocn.dev, not YouTube: see thumbnail.jpg.ts. Hidden if it can't load. */}
+                <img
+                  class="doorVideoThumbnail"
+                  src={`/doors/${page.door}/thumbnail.jpg`}
+                  alt=""
+                  onerror="this.remove()"
+                />
+                {/* The whole thumbnail is the button: a click anywhere on it starts the interview. */}
+                <button class="doorVideoStart" type="button" aria-label="watch the interview">
+                  <span class="doorVideoIcon" aria-hidden="true">▶</span>
+                </button>
+              </div>
+            ) : (
+              <div class="doorVideoFrame doorVideoSoon">
+                <span class="doorVideoIcon" aria-hidden="true">▶</span>
+                <span>the interview is on its way</span>
+              </div>
+            )}
+            <figcaption class="doorVideoNote">
+              with{' '}
+              {page.maintainer.url ? (
+                <a href={page.maintainer.url} target="_blank" rel="noopener">{page.maintainer.name}</a>
+              ) : (
+                page.maintainer.name
+              )}
+              , {page.maintainer.role} · thanks for the interview!
+            </figcaption>
+          </figure>
+
+          {page.docs.length > 0 && (
+            <section class="doorDocs" aria-labelledby="door-docs">
+              <h2 class="doorHeading" id="door-docs">docs</h2>
+              <ul class="doorDocsList">
+                {page.docs.map((doc) => (
+                  <li>
+                    <a href={doc.url} target="_blank" rel="noopener">
+                      {doc.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </aside>
+      </article>
     </BaseLayout>
   ) : closed ? (
     <BaseLayout
+      footerBelowFold={false}
       title={`door ${number}`}
       description={`Door ${number} opens ${formatStationTime(closed.opensAt)}.`}
       noindex
@@ -118,6 +271,7 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     </BaseLayout>
   ) : notReady ? (
     <BaseLayout
+      footerBelowFold={false}
       title={`door ${number}`}
       description="This door isn't ready yet."
       noindex
@@ -132,6 +286,7 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     </BaseLayout>
   ) : (
     <BaseLayout
+      footerBelowFold={false}
       title={`door ${number}`}
       description="This door can't be shown right now."
       noindex
@@ -148,6 +303,53 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
 }
 
 <script>
+  // The mission's ticks, per door, in this browser only. Kept by the goal's text, so a goal that
+  // changes starts unticked. Storage can be missing (private windows): then ticks just don't stay.
+  const mission = document.querySelector<HTMLElement>('.doorMissionList');
+  if (mission) {
+    const key = `aocn-mission-${mission.dataset.door}`;
+    const boxes = [...mission.querySelectorAll<HTMLInputElement>('.doorGoalBox')];
+    let ticked: string[] = [];
+    try {
+      ticked = JSON.parse(localStorage.getItem(key) ?? '[]');
+    } catch {
+      ticked = [];
+    }
+    for (const box of boxes) {
+      box.checked = ticked.includes(box.value);
+      box.addEventListener('change', () => {
+        try {
+          localStorage.setItem(key, JSON.stringify(boxes.filter((b) => b.checked).map((b) => b.value)));
+        } catch {
+          // Not kept, but still ticked on the page.
+        }
+      });
+    }
+  }
+
+  // "play locally" opens its steps in a dialog. Esc and "close" close it.
+  const local = document.querySelector<HTMLDialogElement>('.doorLocal');
+  document.querySelector('.doorPlayLocally')?.addEventListener('click', () => local?.showModal());
+  local?.addEventListener('click', (event) => {
+    // A click on the backdrop lands on the dialog itself.
+    if (event.target === local) local.close();
+  });
+
+  // The interview loads only when asked for: until then the page sends nothing to YouTube.
+  document.querySelectorAll<HTMLElement>('.doorVideoFrame').forEach((frame) => {
+    frame.querySelector('button')?.addEventListener('click', () => {
+      const player = document.createElement('iframe');
+      player.src = frame.dataset.embed!;
+      player.title = 'interview';
+      player.allow = 'autoplay; encrypted-media; fullscreen; picture-in-picture';
+      player.allowFullscreen = true;
+      frame.replaceChildren(player);
+      player.focus();
+    });
+  });
+</script>
+
+<script>
   import { fetchMe } from '../../lib/account';
 
   // Logged in already, but still here: not a previewer of this door, and logging in again
@@ -162,6 +364,16 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
       preview.querySelector<HTMLElement>('.doorPreviewLogIn')!.hidden = true;
     });
   }
+
+  // Logged in: the play buttons take the place of "log in to play".
+  const play = document.querySelector<HTMLElement>('.doorPlayButtons');
+  if (play) {
+    fetchMe().then((me) => {
+      if (!me) return;
+      play.hidden = false;
+      document.querySelector<HTMLElement>('.doorLogInToPlay')!.hidden = true;
+    });
+  }
 </script>
 
 <style>
@@ -169,6 +381,10 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     color: var(--color-text);
     font-size: var(--font-size-lead);
     line-height: var(--line-height-lead);
+  }
+
+  .doorHeader .doorPreviewNote {
+    margin-bottom: var(--space-4);
   }
 
   .doorPreviewNote {
@@ -187,26 +403,391 @@ const number = String(page?.door ?? Astro.params.door).padStart(2, '0');
     color: var(--color-text);
   }
 
-  /* Brighter than other text pages: a story is long enough to reach the aurora at tablet
-     widths, where the body color falls below AA contrast. */
-  .doorStory {
+  /* The open door: text on the left, the interview on the right; one column on phones,
+     with the interview below "play". */
+  .door {
     display: grid;
-    gap: var(--space-4);
-    color: var(--color-text);
+    grid-template-columns: minmax(0, 72ch) minmax(280px, 480px);
+    gap: var(--space-8) var(--space-12);
+    align-items: start;
+    padding: var(--space-12) var(--page-gutter);
   }
 
-  .doorLog {
-    display: grid;
-    gap: var(--space-2);
-    margin: 0;
-    padding-left: var(--space-4);
-    border-left: 1px solid var(--color-aurora);
-    color: var(--color-text-soft);
+  .doorHeader {
+    grid-column: 1 / -1;
   }
 
-  .doorLogSignature {
+  .doorCommand {
     color: var(--color-muted);
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
+  }
+
+  .doorTitle {
+    font-size: var(--font-size-title);
+    line-height: var(--line-height-title);
+    letter-spacing: var(--letter-spacing-title);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .doorUnderscore {
+    color: var(--color-aurora);
+  }
+
+  .doorText {
+    display: grid;
+    gap: var(--space-8);
+    max-width: 72ch;
+  }
+
+  /* Body size, so a story of a few paragraphs doesn't outweigh the rest. Brighter than body
+     text: it reaches the aurora at tablet widths, where the body color falls below AA. */
+  .doorStory {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+  }
+
+  /* The story is flavour, so it's quieter than the mission, which players come back for. */
+  .doorStoryText {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0;
+    color: var(--color-text-soft);
+  }
+
+  .doorStorySignature {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+
+  /* Like the man page's section names: the play button stays the only green on the left. */
+  .doorHeading {
+    margin-bottom: var(--space-2);
+    color: var(--color-text);
+    font-size: var(--font-size-wordmark);
+    line-height: var(--line-height-body);
+    letter-spacing: var(--letter-spacing-wordmark);
+    font-weight: var(--font-weight-bold);
+    text-transform: uppercase;
+  }
+
+  .doorMissionList {
+    display: grid;
+    gap: var(--space-2);
+    padding: 0;
+    list-style: none;
+    color: var(--color-text-body);
+  }
+
+  /* Each goal is a real checkbox, drawn like a terminal: [ ] and [x]. It takes focus itself, so
+     it gets the site's focus ring; the goal's text next to it is its label, so it's clickable
+     too. */
+  .doorGoal {
+    display: grid;
+    grid-template-columns: var(--space-8) minmax(0, 1fr);
+    align-items: baseline;
+    cursor: pointer;
+  }
+
+  .doorGoalBox {
+    appearance: none;
+    width: 3ch;
+    margin: 0;
+    font: inherit;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+
+  .doorGoalBox::before {
+    content: '[ ]';
+  }
+
+  .doorGoalBox:checked {
+    color: var(--color-aurora);
+  }
+
+  .doorGoalBox:checked::before {
+    content: '[x]';
+  }
+
+  .doorGoal:has(.doorGoalBox:checked) {
+    color: var(--color-text-soft);
+  }
+
+
+  .doorSteps {
+    display: grid;
+  }
+
+  .doorStepList {
+    display: grid;
+    gap: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+
+  /* The step's name in a column of its own, like the man page's sections. */
+  .doorStep {
+    display: grid;
+    grid-template-columns: 11ch minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: baseline;
+  }
+
+  .doorStepName {
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .doorStepBody {
+    color: var(--color-text-body);
+  }
+
+  .doorStepsMore {
+    margin-top: var(--space-3);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .doorStepsMore a {
+    color: var(--color-text-soft);
+  }
+
+  .doorStepQuiet {
+    color: var(--color-muted);
+  }
+
+
+
+
+  /* The two commands a player needs, boxed like a terminal, so they stand out. */
+  .doorCommandInline {
+    padding: 2px var(--space-2);
+    border: 1px solid var(--color-line-strong);
+    background: var(--color-bg);
+    color: var(--color-aurora);
+    white-space: nowrap;
+  }
+
+  .doorSide {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .doorVideoNote a {
+    color: var(--color-text);
+  }
+
+
+
+
+
+
+
+
+  .doorDocsList {
+    display: grid;
+    gap: var(--space-2);
+    padding: 0;
+    list-style: none;
+  }
+
+  .doorDocsList a {
+    color: var(--color-text-body);
+  }
+
+  .doorDocsList li::before {
+    content: '> ';
+    color: var(--color-muted);
+  }
+
+  .doorLocalNeeds {
+    margin-top: var(--space-4);
+    color: var(--color-text-soft);
+  }
+
+  .doorLocalNeeds strong {
+    color: var(--color-text);
+  }
+
+  @media (max-width: 599px) {
+    .doorStep {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-2);
+    }
+  }
+
+  .doorPlayButtons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .doorPlayButtons[hidden],
+  .doorLogInToPlay[hidden] {
+    display: none;
+  }
+
+  .doorLogInToPlay {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+  }
+
+  .doorLogInNote {
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .doorLogInNote a {
+    color: var(--color-text-soft);
+  }
+
+  .doorLocal {
+    width: min(100% - 2 * var(--space-4), 64ch);
+    padding: var(--space-6);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-none);
+    background: var(--color-panel);
+    color: var(--color-text);
+    box-shadow: var(--shadow-overlay);
+  }
+
+  .doorLocal::backdrop {
+    background: color-mix(in srgb, var(--color-sky-top) 70%, transparent);
+  }
+
+  .doorLocalTitle {
+    color: var(--color-aurora);
+    font-size: var(--font-size-body);
+    font-weight: var(--font-weight-regular);
+  }
+
+  .doorLocalSteps {
+    display: grid;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+    padding-left: var(--space-6);
+    color: var(--color-text-body);
+  }
+
+  .doorLocalSteps li::marker {
+    color: var(--color-muted);
+  }
+
+  .doorLocalSteps strong {
+    color: var(--color-text);
+  }
+
+  .doorLocalCode {
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    overflow-x: auto;
+    border: 1px solid var(--color-line);
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .doorLocalActions {
+    margin-top: var(--space-6);
+  }
+
+
+
+  .doorVideo {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+  }
+
+  .doorVideoFrame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border: 1px solid var(--color-line-strong);
+    background: var(--color-panel-glass);
+  }
+
+  .doorVideoFrame :global(iframe) {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  /* object-fit crops the bars the smaller thumbnail has above and below. */
+  .doorVideoThumbnail {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .doorVideoStart {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .doorVideoStart:hover .doorVideoIcon,
+  .doorVideoStart:focus-visible .doorVideoIcon {
+    background: var(--color-aurora);
+    color: var(--color-bg);
+  }
+
+  .doorVideoIcon {
+    background: var(--color-panel);
+    display: grid;
+    place-items: center;
+    width: var(--size-control);
+    height: var(--size-control);
+    border: 1px solid var(--color-aurora);
+    color: var(--color-aurora);
+  }
+
+  .doorVideoSoon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    color: var(--color-text-soft);
+  }
+
+  /* muted, not dim: the icon sits over the sky, and dim falls below AA there. */
+  .doorVideoSoon .doorVideoIcon {
+    border-color: var(--color-muted);
+    color: var(--color-muted);
+  }
+
+  .doorVideoNote {
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  @media (max-width: 999px) {
+    .door {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .doorSide {
+      max-width: 72ch;
+    }
   }
 </style>

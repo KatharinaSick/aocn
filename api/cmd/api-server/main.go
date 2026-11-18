@@ -85,6 +85,7 @@ func main() {
 		Storage:    doorStorage,
 		Pages:      &doors.Pages{Storage: doorStorage},
 		Checks:     &doors.Checks{Storage: doorStorage},
+		Hints:      &doors.Hints{Storage: doorStorage},
 		Accounts:   userStore,
 		Previewers: cfg.PreviewerAccess,
 		Results:    resultStore,

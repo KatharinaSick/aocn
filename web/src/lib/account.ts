@@ -49,3 +49,9 @@ export function loginHref(path: string): string {
 export function profileHref(login: string): string {
   return `/u/${encodeURIComponent(login)}`;
 }
+
+/** Whether a path is a profile card, like /u/octocat. A private card is a 404 for anyone but
+ * its owner, so its 404 asks a logged-out visitor whether it's theirs. */
+export function isProfilePath(path: string): boolean {
+  return /^\/u\/[^/]+\/?$/.test(path);
+}

@@ -3,7 +3,7 @@
 // The text is long enough to wrap, and has every part a door page can show. Door 3 is open
 // but can't be served, for the page that says to come back later. One made-up player has
 // fixed door 1, for the profile card; another sees their own private card. Door 5 isn't open yet, and
-// door 7 is a previewer's early look. Door 9 was never uploaded.
+// door 7 is a previewer's early look, before its interview is uploaded. Door 9 was never uploaded.
 import { createServer } from 'node:http';
 
 const port = Number(process.argv[2] ?? 4801);
@@ -14,8 +14,14 @@ const door = {
   title: 'Example',
   story:
     'This is a made-up door for the accessibility tests. Its story is long enough to wrap over\nseveral lines at every width the tests check.\n\nA second paragraph, so the spacing between paragraphs is tested too.',
-  log: 'This door does not exist. The tests do not seem to mind.',
+  mission: ['Fix the first thing that is broken', 'Keep everything else working', 'Give nothing more access than it needs'],
+  pola: 'This door does not exist. The tests do not seem to mind.',
   videoId: 'example',
+  maintainer: { name: 'Example Person', role: 'Example maintainer', url: 'https://example.com/person' },
+  docs: [
+    { title: 'Example docs', url: 'https://example.com/docs' },
+    { title: 'More example docs', url: 'https://example.com/more' },
+  ],
 };
 
 const profile = {
@@ -35,7 +41,7 @@ createServer((req, res) => {
     res.statusCode = 503;
     res.end('{"error":"this door can\'t be served right now, try again in a few minutes"}');
   } else if (req.url === '/doors/7') {
-    res.end(JSON.stringify({ ...door, door: 7, opensAt: '2026-12-07T06:00:00+01:00', preview: true }));
+    res.end(JSON.stringify({ ...door, door: 7, opensAt: '2026-12-07T06:00:00+01:00', preview: true, videoId: '' }));
   } else if (req.url === '/doors/9') {
     res.statusCode = 503;
     res.end('{"error":"door 9 isn\'t ready yet","door":9,"notReady":true}');

@@ -11,9 +11,43 @@ export interface DoorPage {
   door: number;
   opensAt: Date;
   title: string;
+  /** A few sentences; paragraphs are separated by a blank line. */
   story: string;
-  log: string;
+  /** What to fix, one short line each. */
+  mission: string[];
+  /** POLARIS-7's one sentence for the door, her prompt line on the page. */
+  pola: string;
   videoId: string;
+  /** Who the interview is with. */
+  maintainer: Maintainer;
+  /** A few links that help with the mission. */
+  docs: Link[];
+}
+
+export interface Maintainer {
+  name: string;
+  role: string;
+  /** Where to find them; empty if the API sent no https link. */
+  url: string;
+}
+
+export interface Link {
+  title: string;
+  url: string;
+}
+
+/** The link if it's an absolute https URL, the only kind the page links to; otherwise ''. */
+export function httpsOnly(url: unknown): string {
+  if (typeof url !== 'string') return '';
+  try {
+    return new URL(url).protocol === 'https:' ? url : '';
+  } catch {
+    return '';
+  }
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 export type DoorAnswer =
@@ -86,10 +120,23 @@ export function readDoorAnswer(status: number, body: unknown): DoorAnswer {
       opensAt: new Date(String(b.opensAt)),
       title: b.title,
       story: b.story,
-      log: typeof b.log === 'string' ? b.log : '',
-      videoId: typeof b.videoId === 'string' ? b.videoId : '',
+      mission: Array.isArray(b.mission) ? b.mission.filter((goal): goal is string => typeof goal === 'string') : [],
+      pola: text(b.pola),
+      videoId: text(b.videoId),
+      maintainer: readMaintainer(b.maintainer),
+      docs: Array.isArray(b.docs) ? b.docs.map(readLink).filter((link) => link.title && link.url) : [],
     },
   };
+}
+
+function readMaintainer(value: unknown): Maintainer {
+  const m = (value ?? {}) as Record<string, unknown>;
+  return { name: text(m.name), role: text(m.role), url: httpsOnly(m.url) };
+}
+
+function readLink(value: unknown): Link {
+  const l = (value ?? {}) as Record<string, unknown>;
+  return { title: text(l.title), url: httpsOnly(l.url) };
 }
 
 /** How long an open door's page may stay in Netlify's cache: a late fix shows up after this. */
@@ -149,4 +196,44 @@ export function doorDescription(story: string, max = 160): string {
   }
   const cut = first.slice(0, max - 1);
   return `${cut.slice(0, cut.lastIndexOf(' ') > 0 ? cut.lastIndexOf(' ') : cut.length)}…`;
+}
+
+/** The repository players' Codespaces are made from. */
+const PLAY_REPO = 'KatharinaSick/aocn';
+
+/**
+ * The "play" link: a new Codespace from the door's own devcontainer.json, which opens the door
+ * by itself. quickstart offers the player's existing Codespace for that door instead of a
+ * second one.
+ */
+export function playUrl(door: number): string {
+  const config = `.devcontainer/door-${String(door).padStart(2, '0')}/devcontainer.json`;
+  const params = new URLSearchParams({ devcontainer_path: config, quickstart: '1' });
+  return `https://codespaces.new/${PLAY_REPO}?${params}`;
+}
+
+/**
+ * The interview's player. youtube-nocookie, and only loaded once the visitor asks for it, so
+ * the page itself sends nothing to YouTube.
+ */
+export function videoEmbedUrl(videoId: string): string {
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0`;
+}
+
+/**
+ * The interview's thumbnail from YouTube: the large one, or the one every video has when there
+ * is no large one. null if YouTube has neither or can't be reached.
+ */
+export async function fetchThumbnail(videoId: string, fetchFn: typeof fetch = fetch): Promise<ArrayBuffer | null> {
+  for (const name of ['maxresdefault', 'hqdefault']) {
+    try {
+      const response = await fetchFn(`https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/${name}.jpg`);
+      if (response.ok) {
+        return await response.arrayBuffer();
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }

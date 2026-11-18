@@ -277,9 +277,15 @@ type cliLoginResponse struct {
 	Login string `json:"login"`
 }
 
-// handleCLILogin swaps the GitHub token from aocn login's device flow for this API's own,
-// once. The CLI keeps only this API's token, which carries the GitHub user ID: no request
-// after this asks GitHub who it is.
+// noAccountResponse answers a sign-in with ?create=false from someone without an account.
+type noAccountResponse struct {
+	Error     string `json:"error"`
+	NoAccount bool   `json:"noAccount"`
+}
+
+// handleCLILogin swaps a GitHub token, from aocn login's device flow or a Codespace, for this
+// API's own, once. The CLI keeps only this API's token, which carries the GitHub user ID: no
+// request after this asks GitHub who it is.
 func handleCLILogin(log app.Logger, a Auth) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -302,6 +308,20 @@ func handleCLILogin(log app.Logger, a Auth) http.Handler {
 			log.Error("Asking GitHub who is signing in failed", "error", err)
 			writeJSONError(w, http.StatusBadGateway, "GitHub couldn't tell us who you are right now, try again in a few minutes")
 			return
+		}
+		// ?create=false only signs in someone who has an account already, so the CLI can ask
+		// before creating one. Without it, signing in creates the account, as older CLIs expect.
+		if r.URL.Query().Get("create") == "false" {
+			_, err := a.Store.Get(ctx, gh.ID)
+			if errors.Is(err, users.ErrNotFound) {
+				writeJSON(w, http.StatusNotFound, noAccountResponse{Error: "no aocn.dev account yet", NoAccount: true})
+				return
+			}
+			if err != nil {
+				log.Error("Looking up who signs in failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "signing in failed on our side, try again in a few minutes")
+				return
+			}
 		}
 		now := a.now()
 		if err := a.Store.Save(ctx, users.User{GitHubID: gh.ID, Login: gh.Login, AvatarURL: gh.AvatarURL}, now); err != nil {
