@@ -39,11 +39,17 @@ render() {
     "AOCN_WORKSPACE": "/workspaces/\${localWorkspaceFolderBasename}/play",
     "AOCN_DOOR": "$n"
   },
+  "postCreateCommand": "git update-index --skip-worktree README.md",
   "customizations": {
+    "codespaces": {
+      "openFiles": ["play/README.md"]
+    },
     "vscode": {
       "settings": {
         "files.exclude": {
-          ".gitignore": true
+          ".gitignore": true,
+          ".open.json": true,
+          ".hints-seen.json": true
         }
       }
     }

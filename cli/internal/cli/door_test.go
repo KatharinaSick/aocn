@@ -31,3 +31,14 @@ func TestNotYet(t *testing.T) {
 		t.Errorf("signed out: got %q, want how a previewer gets the door", got)
 	}
 }
+
+func TestOtherDoor(t *testing.T) {
+	inCodespace := otherDoor(1, 3, true).Error()
+	if !strings.Contains(inCodespace, "https://aocn.dev/doors/3") || strings.Contains(inCodespace, "--reset") {
+		t.Errorf("in door 1's Codespace: got %q, want the door's page and no --reset", inCodespace)
+	}
+	elsewhere := otherDoor(1, 3, false).Error()
+	if !strings.Contains(elsewhere, "https://aocn.dev/doors/3") || !strings.Contains(elsewhere, "aocn open 3 --reset") {
+		t.Errorf("elsewhere: got %q, want the door's page and --reset", elsewhere)
+	}
+}

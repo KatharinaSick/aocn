@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -43,12 +42,13 @@ func newOpenCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "open DOOR",
 		Short: "Start a door on a fresh cluster",
-		Long: `open puts the door's files in doors/ and starts the door on a fresh cluster. Only one
-door runs at a time, so whatever ran in the cluster before is gone.
+		Long: `open puts the door's files in your station and starts the door on a fresh cluster. Your
+station is the folder you play in (play/ in the devcontainer, or the current folder), and it
+holds one door: every door has its own Codespace.
 
 Your files are never deleted. If you opened the door before, you continue with your files,
-and only the door's own files in .aocn/ are replaced with the newest version. --reset starts
-over with the original files, and moves yours aside.`,
+and only aocn's own files (.aocn/ and README.md) are replaced with the newest version.
+--reset starts over with the original files, and moves yours to .old/.`,
 		Example: `  aocn open 1
   aocn open 1 --reset
   aocn open 1 --bundle ./bundle.tar.gz`,
@@ -62,7 +62,7 @@ over with the original files, and moves yours aside.`,
 		},
 	}
 	cmd.Flags().StringVar(&bundle, "bundle", "", "use a local bundle instead of downloading it")
-	cmd.Flags().BoolVar(&reset, "reset", false, "start over with the original files, and move yours aside")
+	cmd.Flags().BoolVar(&reset, "reset", false, "start over with the original files, and move yours to .old/")
 	return cmd
 }
 
@@ -70,6 +70,23 @@ over with the original files, and moves yours aside.`,
 // without one, from a download. aocn open runs it, and aocn resume the first time a door's own
 // Codespace starts.
 func openDoor(cmd *cobra.Command, number int, bundle string, reset bool) error {
+	station, err := door.Station()
+	if err != nil {
+		return err
+	}
+	before, opened, err := door.LoadOpen(station)
+	if err != nil {
+		return err
+	}
+	// A station holds one door. Another one is refused before anything is downloaded, so
+	// nobody loses a door by typing the wrong number; outside a door's own Codespace, --reset
+	// replaces it.
+	if opened && before.Number != number {
+		if !reset || os.Getenv("AOCN_DOOR") != "" {
+			return otherDoor(before.Number, number, os.Getenv("AOCN_DOOR") != "")
+		}
+	}
+
 	if bundle == "" {
 		downloaded, err := download(cmd, number)
 		if err != nil {
@@ -82,45 +99,59 @@ func openDoor(cmd *cobra.Command, number int, bundle string, reset bool) error {
 	if err != nil {
 		return err
 	}
-	dir, err := door.Dir()
-	if err != nil {
-		return err
-	}
 	out := cmd.OutOrStdout()
-
-	if door.Exists(dir, folder) {
-		if !reset {
-			reset = askReset(cmd, folder)
-		}
-		if reset {
-			aside, err := door.MoveAside(dir, folder)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(out, "Moved your files to doors/%s/.\n", aside)
-		}
+	if opened && before.Number == number && !reset {
+		reset = askReset(cmd)
 	}
-	if door.Exists(dir, folder) {
-		// The player's files stay, but the door's own files come from the newest bundle.
-		if err := door.Refresh(bundle, dir, folder); err != nil {
+	continuing := opened && before.Number == number && !reset
+	if opened && !continuing {
+		aside, err := door.MoveAside(station, before.Folder)
+		if err != nil {
 			return err
 		}
-	} else if err := door.Extract(bundle, dir); err != nil {
-		return err
+		fmt.Fprintf(out, "Moved door %d's files to %s/.\n", before.Number, aside)
 	}
 
-	if err := cluster.Recreate(cmd.Context(), out, door.KindConfig(filepath.Join(dir, folder))); err != nil {
+	if continuing {
+		// The player's files stay, but aocn's come from the newest bundle.
+		if err := door.Refresh(bundle, station); err != nil {
+			return err
+		}
+	} else {
+		strangers, err := door.Strangers(bundle, station)
+		if err != nil {
+			return err
+		}
+		if len(strangers) > 0 {
+			return fmt.Errorf("aocn open puts the door's files right in this folder, but it has other things in it: %s. Run it in an empty folder", strings.Join(strangers, ", "))
+		}
+		if err := door.Extract(bundle, station); err != nil {
+			return err
+		}
+	}
+
+	if err := cluster.Recreate(cmd.Context(), out, door.KindConfig(station)); err != nil {
 		return err
 	}
 	// Saved before init, so a restart picks the door up even if init failed.
-	if err := door.SaveOpen(dir, door.Open{Number: number, Folder: folder}); err != nil {
+	if err := door.SaveOpen(station, door.Open{Number: number, Folder: folder}); err != nil {
 		return err
 	}
-	if err := door.Init(cmd.Context(), out, filepath.Join(dir, folder)); err != nil {
+	if err := door.Init(cmd.Context(), out, station); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "\nDoor %d is open. Its files are in doors/%s/.\n", number, folder)
+	fmt.Fprintf(out, "\nDoor %d is open. README.md says where to start.\n", number)
 	return nil
+}
+
+// otherDoor is the answer to opening a door in a station that holds another one. In a door's
+// own Codespace, it points to the other door's page, which opens its own Codespace.
+func otherDoor(open, asked int, doorsCodespace bool) error {
+	page := fmt.Sprintf("https://aocn.dev/doors/%d", asked)
+	if doorsCodespace {
+		return fmt.Errorf("this Codespace is door %d's. Door %d has its own: open it from %s", open, asked, page)
+	}
+	return fmt.Errorf("door %d is open here, and a station holds one door. Play door %d in its own Codespace, from %s, or replace door %d here with: aocn open %d --reset (its files are moved to .old/)", open, asked, page, open, asked)
 }
 
 // download fetches the door's bundle into a temporary file and returns its path. Before the
@@ -165,9 +196,9 @@ func notYet(closed *api.ClosedError, signedIn bool) error {
 
 // askReset warns that the door was opened before and asks whether to start over. Without a
 // terminal to ask in, it keeps the player's files.
-func askReset(cmd *cobra.Command, folder string) bool {
+func askReset(cmd *cobra.Command) bool {
 	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "You opened this door before. Your files are in doors/%s/.\n", folder)
+	fmt.Fprintln(out, "You opened this door before, and your files are still here.")
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		fmt.Fprintln(out, "Continuing with your files. To start over, run it again with --reset.")
 		return false
@@ -190,11 +221,11 @@ door is open.`,
 		Args:   cobra.NoArgs,
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := door.Dir()
+			station, err := door.Station()
 			if err != nil {
 				return err
 			}
-			open, ok, err := door.LoadOpen(dir)
+			_, ok, err := door.LoadOpen(station)
 			if err != nil {
 				return err
 			}
@@ -206,11 +237,10 @@ door is open.`,
 				return openDoor(cmd, number, "", false)
 			}
 			out := cmd.OutOrStdout()
-			folder := filepath.Join(dir, open.Folder)
-			if err := cluster.Start(cmd.Context(), out, door.KindConfig(folder)); err != nil {
+			if err := cluster.Start(cmd.Context(), out, door.KindConfig(station)); err != nil {
 				return err
 			}
-			return door.Init(cmd.Context(), out, folder)
+			return door.Init(cmd.Context(), out, station)
 		},
 	}
 }
@@ -233,20 +263,21 @@ func newWhereCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "where",
 		Short: "Print the open door's folder",
-		Long: `where prints the folder of the open door, and nothing if no door is open. The
-devcontainer's shell uses it to change into the door after aocn open and in every new terminal.`,
+		Long: `where prints the station, the folder the open door's files are in, and nothing if no
+door is open. The devcontainer's shell uses it to change into the door after aocn open and in
+every new terminal.`,
 		Args:   cobra.NoArgs,
 		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := door.Dir()
+			station, err := door.Station()
 			if err != nil {
 				return err
 			}
-			folder, ok, err := door.OpenFolder(dir)
+			ok, err := door.IsOpen(station)
 			if err != nil || !ok {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), folder)
+			fmt.Fprintln(cmd.OutOrStdout(), station)
 			return nil
 		},
 	}
@@ -261,11 +292,11 @@ result under your GitHub account. The first time, it signs you in. If you're stu
 gives you a hint. It works from any folder.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := door.Dir()
+			station, err := door.Station()
 			if err != nil {
 				return err
 			}
-			open, ok, err := door.LoadOpen(dir)
+			open, ok, err := door.LoadOpen(station)
 			if err != nil {
 				return err
 			}
@@ -350,11 +381,11 @@ func newHintCmd() *cobra.Command {
 again after the last one shows the last one again.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir, err := door.Dir()
+			station, err := door.Station()
 			if err != nil {
 				return err
 			}
-			open, ok, err := door.LoadOpen(dir)
+			open, ok, err := door.LoadOpen(station)
 			if err != nil {
 				return err
 			}
@@ -375,7 +406,7 @@ again after the last one shows the last one again.`,
 				return nil
 			}
 
-			i, err := door.NextHint(dir, open.Number, len(hints))
+			i, err := door.NextHint(station, open.Number, len(hints))
 			if err != nil {
 				return err
 			}

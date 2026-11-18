@@ -1,4 +1,5 @@
-// Package door unpacks door bundles into the workspace and remembers which door is open.
+// Package door unpacks a door's bundle into the station, the workspace folder the player plays
+// in, and remembers which door is open. A station holds one door.
 package door
 
 import (
@@ -7,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -45,51 +47,82 @@ func BundleFolder(bundle string, number int) (string, error) {
 
 // ToolDir is the folder in every door that belongs to aocn: the door's init.sh and workloads.
 // The checks and hints aren't in it: aocn verify and aocn hint get them from the API.
-// Everything else in a door's folder is the player's.
 const ToolDir = ".aocn"
 
-// Extract unpacks the bundle into dir. The bundle's folder ends up as dir/<folder>, which
-// must not exist yet. If unpacking fails, the half-unpacked folder is removed again.
-//
-// It doesn't unpack somewhere else and rename: on a bind-mounted workspace (podman on macOS),
-// renaming a folder tree doesn't reliably move everything.
-func Extract(bundle, dir string) (err error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+// Readme is aocn's too: every door's is the same text, pointing to the door's page. In a
+// Codespace, it replaces the "your station is starting" page that opened with it, and VS Code
+// shows the new one in the same tab. Everything else in the station is the player's.
+const Readme = "README.md"
+
+// ours reports whether rel, a path in the door's folder, is aocn's: replaced from the bundle on
+// every open, never moved aside as the player's.
+func ours(rel string) bool {
+	return rel == ToolDir || strings.HasPrefix(rel, ToolDir+"/") || rel == Readme
+}
+
+// inDoor returns name without the bundle's folder: "01-example/manifests/a.yaml" is
+// "manifests/a.yaml". The folder itself is "".
+func inDoor(name string) string {
+	_, rel, _ := strings.Cut(name, "/")
+	return rel
+}
+
+// Extract unpacks the door's files from the bundle right into station, without the bundle's
+// folder: a station holds one door. Files that are there already are overwritten, so a station
+// left half-unpacked by an open that failed gets whole again.
+func Extract(bundle, station string) error {
+	if err := os.MkdirAll(station, 0o755); err != nil {
 		return err
 	}
-	var folder string
-	defer func() {
-		if err != nil && folder != "" {
-			os.RemoveAll(filepath.Join(dir, folder))
-		}
-	}()
-
 	return walk(bundle, func(name string, h *tar.Header, r io.Reader) error {
-		if folder == "" {
-			folder, _, _ = strings.Cut(name, "/")
-			if _, err := os.Stat(filepath.Join(dir, folder)); err == nil {
-				existing := folder
-				folder = "" // not ours to remove
-				return fmt.Errorf("doors/%s exists already", existing)
-			}
+		if rel := inDoor(name); rel != "" {
+			return writeEntry(station, rel, h, r)
 		}
-		return writeEntry(dir, name, h, r)
+		return nil
 	})
 }
 
-// Refresh replaces dir/folder/.aocn with the one from the bundle, so a door the player opened
-// before gets the newest init.sh, checks and workloads. It doesn't touch the player's files.
-func Refresh(bundle, dir, folder string) error {
-	if err := os.RemoveAll(filepath.Join(dir, folder, ToolDir)); err != nil {
+// Refresh replaces the station's .aocn and README.md with the bundle's, so a door the player
+// opened before gets the newest init.sh and workloads. It doesn't touch the player's files.
+func Refresh(bundle, station string) error {
+	if err := os.RemoveAll(filepath.Join(station, ToolDir)); err != nil {
 		return err
 	}
-	prefix := folder + "/" + ToolDir
 	return walk(bundle, func(name string, h *tar.Header, r io.Reader) error {
-		if name != prefix && !strings.HasPrefix(name, prefix+"/") {
-			return nil
+		if rel := inDoor(name); ours(rel) {
+			return writeEntry(station, rel, h, r)
 		}
-		return writeEntry(dir, name, h, r)
+		return nil
 	})
+}
+
+// Strangers returns what's in station that's neither the station's own nor in the bundle: a
+// folder with other things in it, where unpacking a door would mix its files with someone's.
+func Strangers(bundle, station string) ([]string, error) {
+	entries, err := os.ReadDir(station)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	inBundle := map[string]bool{}
+	err = walk(bundle, func(name string, _ *tar.Header, _ io.Reader) error {
+		if top, _, _ := strings.Cut(inDoor(name), "/"); top != "" {
+			inBundle[top] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	var strangers []string
+	for _, e := range entries {
+		if !stationOwn[e.Name()] && !inBundle[e.Name()] {
+			strangers = append(strangers, e.Name())
+		}
+	}
+	return strangers, nil
 }
 
 // writeEntry writes one entry of the bundle to dir/name.
