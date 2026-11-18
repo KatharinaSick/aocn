@@ -94,7 +94,7 @@ type Session struct {
 // ErrNoAccount means signing in without creating found no aocn.dev account for the player.
 var ErrNoAccount = errors.New("no aocn.dev account yet")
 
-// SignIn hands a GitHub token, from the device flow or the Codespace, to the API once, and
+// SignIn hands the GitHub token from the device flow to the API once, and
 // returns the API's own token. aocn keeps only that: it carries the player's GitHub user ID,
 // so the API never has to ask GitHub who they are. Without create, it only signs in a player
 // who has an account already, and returns ErrNoAccount for anyone else.

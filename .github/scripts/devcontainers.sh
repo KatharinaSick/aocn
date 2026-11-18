@@ -29,9 +29,9 @@ render() {
   //
   // The same as ../devcontainer.json, plus AOCN_DOOR: the image's postStartCommand
   // (aocn resume) opens door $n on the first start, and starts it again on every start after
-  // that. In a Codespace, it signs in a player who has an aocn.dev account already, so a
-  // previewer gets the door early. Start commands never run in a prebuild, so no door is
-  // downloaded before it opens.
+  // that. Before the door opens, a previewer signs in with aocn login and opens it with
+  // aocn open $n. Start commands never run in a prebuild, so no door is downloaded before it
+  // opens.
   "name": "Advent of Cloud Native · door $nn",
   "image": "$image",
   "workspaceFolder": "/workspaces/\${localWorkspaceFolderBasename}/play",

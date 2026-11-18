@@ -4,9 +4,9 @@
   //
   // The same as ../devcontainer.json, plus AOCN_DOOR: the image's postStartCommand
   // (aocn resume) opens door 7 on the first start, and starts it again on every start after
-  // that. In a Codespace, it signs in a player who has an aocn.dev account already, so a
-  // previewer gets the door early. Start commands never run in a prebuild, so no door is
-  // downloaded before it opens.
+  // that. Before the door opens, a previewer signs in with aocn login and opens it with
+  // aocn open 7. Start commands never run in a prebuild, so no door is downloaded before it
+  // opens.
   "name": "Advent of Cloud Native · door 07",
   "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.0",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/play",

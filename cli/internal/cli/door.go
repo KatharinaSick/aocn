@@ -13,6 +13,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/katharinasick/aocn/cli/internal/api"
+	"github.com/katharinasick/aocn/cli/internal/auth"
 	"github.com/katharinasick/aocn/cli/internal/check"
 	"github.com/katharinasick/aocn/cli/internal/cluster"
 	"github.com/katharinasick/aocn/cli/internal/door"
@@ -26,8 +27,7 @@ func newLoginCmd() *cobra.Command {
 aocn verify asks by itself the first time, so you only need this to switch accounts, or to
 open a door early as a previewer.
 
-In a Codespace, it signs you in with the Codespace's own GitHub token. Anywhere else, you
-confirm a code on github.com. aocn gets no access to your repositories or anything private,
+You confirm a code on github.com. aocn gets no access to your repositories or anything private,
 only your public profile.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -126,9 +126,6 @@ func openDoor(cmd *cobra.Command, number int, bundle string, reset bool) error {
 // download fetches the door's bundle into a temporary file and returns its path. Before the
 // door opens, it says when to come back.
 func download(cmd *cobra.Command, number int) (string, error) {
-	// In a Codespace, a player who has an account is signed in first: a previewer gets their
-	// door early without aocn login, and verify has nothing to ask later.
-	signInQuietly(cmd)
 	f, err := os.CreateTemp("", fmt.Sprintf("aocn-door-%02d-*.tar.gz", number))
 	if err != nil {
 		return "", err
@@ -143,7 +140,8 @@ func download(cmd *cobra.Command, number int) (string, error) {
 		var closed *api.ClosedError
 		switch {
 		case errors.As(err, &closed):
-			return "", fmt.Errorf("not yet: %w. See you then", closed)
+			token, tokenErr := auth.Token()
+			return "", notYet(closed, tokenErr == nil && token != "")
 		case errors.Is(err, api.ErrNoDoor):
 			return "", fmt.Errorf("there is no door %d", number)
 		}
@@ -154,6 +152,15 @@ func download(cmd *cobra.Command, number int) (string, error) {
 			&api.ClosedError{Door: number, OpensAt: preview.OpensAt})
 	}
 	return f.Name(), nil
+}
+
+// notYet is the answer for a door that isn't open yet. Signed out, a previewer gets the same
+// answer from the API as everyone else, so it says how to get the door early.
+func notYet(closed *api.ClosedError, signedIn bool) error {
+	if signedIn {
+		return fmt.Errorf("not yet: %w. See you then", closed)
+	}
+	return fmt.Errorf("not yet: %w. Previewing? Sign in with aocn login, then run aocn open %d again", closed, closed.Door)
 }
 
 // askReset warns that the door was opened before and asks whether to start over. Without a
