@@ -8,7 +8,7 @@
   // aocn open 9. Start commands never run in a prebuild, so no door is downloaded before it
   // opens.
   "name": "Advent of Cloud Native · door 09",
-  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.0",
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.1",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/play",
   "containerEnv": {
     "AOCN_WORKSPACE": "/workspaces/${localWorkspaceFolderBasename}/play",
