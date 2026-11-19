@@ -313,6 +313,10 @@ type openHintRequest struct {
 	// Hint is the number of the hint to open, from 1: the one aocn hint said the price of,
 	// so a second aocn hint at the same time can't open one more than the player agreed to.
 	Hint int `json:"hint"`
+	// Cost is what aocn hint said it costs, if it said: opening it refuses another price, so
+	// a door that opened or got fixed while the player was asked never costs what they
+	// didn't agree to.
+	Cost *int `json:"cost"`
 }
 
 // handleOpenHint opens a hint of an open door for the signed-in player: it records it, which
@@ -358,6 +362,13 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 			}{fmt.Sprintf("hints open in order: open hint %d first", len(before.Hints)+1), before})
 			return
 		}
+		if req.Cost != nil && *req.Cost != before.Next.Cost {
+			writeJSON(w, http.StatusConflict, struct {
+				Error string `json:"error"`
+				hintsResponse
+			}{fmt.Sprintf("hint %d costs %d points now, not %d. Run aocn hint again", req.Hint, before.Next.Cost, *req.Cost), before})
+			return
+		}
 
 		// The user has to exist for their hint to be kept. They do once they signed in.
 		if _, err := d.Accounts.Get(ctx, a.callerID); errors.Is(err, users.ErrNotFound) {
@@ -368,8 +379,8 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 			writeJSONError(w, http.StatusServiceUnavailable, "the hint can't be opened right now, try again in a few minutes")
 			return
 		}
-		cost := before.Next.Cost
-		inserted, err := d.Results.OpenHint(ctx, a.callerID, a.door, req.Hint-1, d.now())
+		at := d.now()
+		inserted, err := d.Results.OpenHint(ctx, a.callerID, a.door, req.Hint-1, at)
 		if errors.Is(err, results.ErrHintOutOfOrder) {
 			// Another aocn hint got there first.
 			writeJSONError(w, http.StatusConflict, "your hints changed in the meantime. Run aocn hint again")
@@ -380,16 +391,20 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 			writeJSONError(w, http.StatusServiceUnavailable, "the hint can't be opened right now, try again in a few minutes")
 			return
 		}
-		after, err := d.hintState(ctx, a, all)
+		progress, err := d.Results.Progress(ctx, []int64{a.callerID})
 		if err != nil {
 			log.Error("Looking up a player's hints failed", "door", a.door, "error", err)
 			writeJSONError(w, http.StatusServiceUnavailable, "the hint was opened, but can't be shown right now. Run aocn hint again in a few minutes")
 			return
 		}
-		if !inserted {
-			// Another aocn hint opened it a moment ago, and said what it cost.
-			cost = 0
-		} else {
+		p := progress[a.callerID]
+		after := d.hintStateOf(a, all, p)
+		// What it cost going by what's recorded, as Score will count it: a pass that came in
+		// while this ran makes it free. Nothing if another aocn hint opened it a moment ago,
+		// which said what it cost.
+		cost := 0
+		if inserted {
+			cost = scoring.HintCostAt(a.opensAt, at, p.Runs[a.door], req.Hint-1)
 			log.Info("Hint opened", "door", a.door, "hint", req.Hint, "github_user_id", a.callerID, "cost", cost)
 		}
 		writeJSON(w, http.StatusOK, openedHintResponse{hintsResponse: after, Cost: cost})
@@ -403,7 +418,11 @@ func (d Doors) hintState(ctx context.Context, a access, all []string) (hintsResp
 	if err != nil {
 		return hintsResponse{}, err
 	}
-	p := progress[a.callerID]
+	return d.hintStateOf(a, all, progress[a.callerID]), nil
+}
+
+// hintStateOf is hintState from the caller's progress.
+func (d Doors) hintStateOf(a access, all []string, p scoring.Progress) hintsResponse {
 	opened := min(len(p.Hints[a.door]), len(all))
 	fixed := scoring.Score(a.opensAt, time.Time{}, p.Runs[a.door], p.Hints[a.door]).Fixed
 	state := hintsResponse{
@@ -416,7 +435,7 @@ func (d Doors) hintState(ctx context.Context, a access, all []string) (hintsResp
 	if opened < len(all) {
 		state.Next = &nextHint{Hint: opened + 1, Cost: scoring.NextHintCost(a.opensAt, d.now(), fixed, opened)}
 	}
-	return state, nil
+	return state
 }
 
 // maxVerifyBytes bounds a verify request: a door has a few dozen checks with a short answer

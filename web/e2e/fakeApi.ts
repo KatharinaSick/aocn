@@ -30,7 +30,7 @@ const JOIN_CODE = 'ExampleCode00000';
 
 const profile = {
   login: 'example',
-  avatarUrl: '',
+ 
   since: '2026-11-20T09:00:00Z',
   doors: [{ door: 1, solvedAt: '2026-12-01T06:30:00+01:00' }],
   public: true,
@@ -48,16 +48,16 @@ const board = {
   openJoin: false,
   countsUntil: '2026-12-31T23:59:59.999+01:00',
   final: false,
-  owner: { login: 'example', avatarUrl: '' },
+  owner: { login: 'example' },
   members: 3,
   maxMembers: 200,
   you: { loggedIn: true, member: true, owner: true },
   joinCode: JOIN_CODE,
   doors: doorNumbers.map((door) => ({ door, opensAt: `2026-12-${String(door).padStart(2, '0')}T06:00:00+01:00`, counts: door <= 3 })),
   standings: [
-    { rank: 1, id: 1, login: 'example', avatarUrl: '', profilePublic: true, you: true, owner: true, points: 195, failedVerifies: 1, fixed: 2, doors: [{ door: 1, points: 95, hints: 1, failedVerifies: 1 }, { door: 3, points: 100, hints: 0, failedVerifies: 0 }] },
-    { rank: 2, id: 2, login: 'another-example', avatarUrl: '', profilePublic: false, you: false, owner: false, points: 100, failedVerifies: 2, fixed: 1, doors: [{ door: 3, points: 100, hints: 0, failedVerifies: 2 }] },
-    { rank: 2, id: 3, login: 'third-example', avatarUrl: '', profilePublic: false, you: false, owner: false, points: 100, failedVerifies: 2, fixed: 1, doors: [{ door: 1, points: 100, hints: 0, failedVerifies: 2 }] },
+    { rank: 1, id: 1, login: 'example', profilePublic: true, you: true, owner: true, points: 195, failedVerifies: 1, fixed: 2, doors: [{ door: 1, points: 95, hints: 1, failedVerifies: 1 }, { door: 3, points: 100, hints: 0, failedVerifies: 0 }] },
+    { rank: 2, id: 2, login: 'another-example', profilePublic: false, you: false, owner: false, points: 100, failedVerifies: 2, fixed: 1, doors: [{ door: 3, points: 100, hints: 0, failedVerifies: 2 }] },
+    { rank: 2, id: 3, login: 'third-example', profilePublic: false, you: false, owner: false, points: 100, failedVerifies: 2, fixed: 1, doors: [{ door: 1, points: 100, hints: 0, failedVerifies: 2 }] },
   ],
   together: 4,
   removed: [{ id: 4, login: 'removed-example', removedAt: '2026-12-02T10:00:00+01:00' }],

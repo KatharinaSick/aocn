@@ -47,7 +47,6 @@ export interface Standing {
   /** Their GitHub user ID, which removing them takes. */
   id: number;
   login: string;
-  avatarUrl: string;
   /** Whether their card may be linked to. */
   profilePublic: boolean;
   /**
@@ -85,7 +84,7 @@ export interface Board {
   openJoin: boolean;
   countsUntil: Date | null;
   final: boolean;
-  owner: { login: string; avatarUrl: string };
+  owner: { login: string };
   members: number;
   maxMembers: number;
   you: { loggedIn: boolean; member: boolean; owner: boolean };
@@ -105,7 +104,7 @@ export interface JoinPreview {
   public: boolean;
   countsUntil: Date | null;
   final: boolean;
-  owner: { login: string; avatarUrl: string };
+  owner: { login: string };
   members: number;
   maxMembers: number;
   full: boolean;
@@ -134,7 +133,7 @@ const date = (v: unknown): Date | null => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 };
-const person = (v: unknown) => (isRecord(v) ? { login: str(v.login), avatarUrl: str(v.avatarUrl) } : { login: '', avatarUrl: '' });
+const person = (v: unknown) => ({ login: isRecord(v) ? str(v.login) : '' });
 
 /** Turns an API answer into an Answer, with read making sense of a 2xx body. */
 export function readAnswer<T>(status: number, body: unknown, read: (body: Json) => T | null): Answer<T> {
@@ -179,7 +178,6 @@ function readStanding(s: unknown): Standing | null {
     rank: num(s.rank),
     id: bool(s.private) ? 0 : num(s.id),
     login: bool(s.private) ? '' : str(s.login),
-    avatarUrl: str(s.avatarUrl),
     profilePublic: bool(s.profilePublic) && !bool(s.private),
     private: bool(s.private),
     you: bool(s.you),

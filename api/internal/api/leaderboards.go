@@ -271,9 +271,8 @@ type standing struct {
 	Rank int `json:"rank"`
 	// ID is the player's GitHub user ID, which removing them takes. GitHub shows it to
 	// anyone, so it tells nothing new.
-	ID        int64  `json:"id"`
-	Login     string `json:"login"`
-	AvatarURL string `json:"avatarUrl"`
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
 	// ProfilePublic says whether their card may be linked to.
 	ProfilePublic bool `json:"profilePublic"`
 	// Private means who they are is left out: their card is private, and who asks sees a
@@ -303,6 +302,12 @@ type removedMember struct {
 	RemovedAt time.Time `json:"removedAt"`
 }
 
+// owner is who owns a board. Only the login: the site shows no avatars, so no visitor's
+// browser asks GitHub for one.
+type owner struct {
+	Login string `json:"login"`
+}
+
 type boardResponse struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
@@ -310,12 +315,9 @@ type boardResponse struct {
 	OpenJoin    bool       `json:"openJoin"`
 	CountsUntil *time.Time `json:"countsUntil"`
 	Final       bool       `json:"final"`
-	Owner       struct {
-		Login     string `json:"login"`
-		AvatarURL string `json:"avatarUrl"`
-	} `json:"owner"`
-	Members    int `json:"members"`
-	MaxMembers int `json:"maxMembers"`
+	Owner       owner      `json:"owner"`
+	Members     int        `json:"members"`
+	MaxMembers  int        `json:"maxMembers"`
 	// You says who asks: whether they're logged in, a member, the owner.
 	You struct {
 		LoggedIn bool `json:"loggedIn"`
@@ -565,13 +567,10 @@ func (l Leaderboards) boardResponse(b leaderboards.Leaderboard, members []leader
 	if member {
 		resp.JoinCode = b.JoinCode
 	}
+	resp.Owner.Login = b.OwnerLogin
 	byID := make(map[int64]leaderboards.Member, len(members))
 	for _, m := range members {
 		byID[m.GitHubID] = m
-		if m.GitHubID == b.OwnerID {
-			resp.Owner.Login = m.Login
-			resp.Owner.AvatarURL = m.AvatarURL
-		}
 	}
 	for _, o := range openings(l.Schedule) {
 		counts := !now.Before(o.OpensAt) && (b.CountsUntil.IsZero() || !o.OpensAt.After(b.CountsUntil))
@@ -584,7 +583,6 @@ func (l Leaderboards) boardResponse(b leaderboards.Leaderboard, members []leader
 			Rank:           r.Rank,
 			ID:             r.ID,
 			Login:          m.Login,
-			AvatarURL:      m.AvatarURL,
 			ProfilePublic:  m.ProfilePublic,
 			You:            v.loggedIn && r.ID == v.id,
 			Owner:          r.ID == b.OwnerID,
@@ -599,7 +597,7 @@ func (l Leaderboards) boardResponse(b leaderboards.Leaderboard, members []leader
 			}
 		}
 		if hidden {
-			s.ID, s.Login, s.AvatarURL, s.Private = 0, "", "", true
+			s.ID, s.Login, s.Private = 0, "", true
 		}
 		resp.Together += r.Total.Fixed
 		resp.Standings = append(resp.Standings, s)
@@ -810,13 +808,10 @@ type joinPreview struct {
 	Public      bool       `json:"public"`
 	CountsUntil *time.Time `json:"countsUntil"`
 	Final       bool       `json:"final"`
-	Owner       struct {
-		Login     string `json:"login"`
-		AvatarURL string `json:"avatarUrl"`
-	} `json:"owner"`
-	Members    int  `json:"members"`
-	MaxMembers int  `json:"maxMembers"`
-	Full       bool `json:"full"`
+	Owner       owner      `json:"owner"`
+	Members     int        `json:"members"`
+	MaxMembers  int        `json:"maxMembers"`
+	Full        bool       `json:"full"`
 	// Member says whether the viewer is in it already.
 	Member bool `json:"member"`
 }
@@ -859,29 +854,20 @@ func handleJoinPreview(log app.Logger, l Leaderboards) http.Handler {
 				return
 			}
 		}
-		members, err := l.Store.Members(ctx, b.ID)
-		if err != nil {
-			writeTryAgain(log, w, "Listing a leaderboard's members failed", err)
-			return
-		}
 		now := l.now()
 		p := joinPreview{
 			Name:        b.Name,
 			Public:      b.Public,
 			CountsUntil: untilPtr(b),
 			Final:       isFinal(b, now),
-			Members:     len(members),
+			Owner:       owner{Login: b.OwnerLogin},
+			Members:     b.Members,
 			MaxMembers:  leaderboards.MaxMembers,
-			Full:        len(members) >= leaderboards.MaxMembers,
+			Full:        b.Members >= leaderboards.MaxMembers,
 			Member:      member,
 		}
 		if member || b.Public {
 			p.ID = b.ID
-		}
-		for _, m := range members {
-			if m.GitHubID == b.OwnerID {
-				p.Owner.Login, p.Owner.AvatarURL = m.Login, m.AvatarURL
-			}
 		}
 		writeJSON(w, http.StatusOK, p)
 	})

@@ -195,3 +195,31 @@ func TestRank(t *testing.T) {
 		t.Error("nobody should rank nobody")
 	}
 }
+
+// HintCostAt agrees with Score: free before the opening and from the first pass on.
+func TestHintCostAt(t *testing.T) {
+	opens := time.Date(2026, 12, 1, 5, 0, 0, 0, time.UTC)
+	pass := []Run{{At: opens.Add(time.Hour), Passed: false}, {At: opens.Add(2 * time.Hour), Passed: true}}
+	for _, c := range []struct {
+		name string
+		at   time.Time
+		runs []Run
+		want int
+	}{
+		{"before the opening", opens.Add(-time.Minute), nil, 0},
+		{"at the opening", opens, nil, 15},
+		{"before the pass", opens.Add(90 * time.Minute), pass, 15},
+		{"at the pass", opens.Add(2 * time.Hour), pass, 0},
+		{"after the pass", opens.Add(3 * time.Hour), pass, 0},
+	} {
+		if got := HintCostAt(opens, c.at, c.runs, 1); got != c.want {
+			t.Errorf("%s: %d, want %d", c.name, got, c.want)
+		}
+		// The same as Score charges, once the door is fixed.
+		fixed := append([]Run{{At: opens.Add(4 * time.Hour), Passed: true}}, c.runs...)
+		d := Score(opens, time.Time{}, fixed, []Hint{{Index: 1, At: c.at}})
+		if charged := DoorPoints - d.Points; charged != c.want {
+			t.Errorf("%s: Score charged %d, HintCostAt says %d", c.name, charged, c.want)
+		}
+	}
+}

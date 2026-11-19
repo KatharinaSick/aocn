@@ -124,6 +124,21 @@ func NextHintCost(opensAt, now time.Time, fixed bool, index int) int {
 	return HintCost(index)
 }
 
+// HintCostAt is what a hint opened at at costs, given the door's runs: nothing before the
+// door opens (a previewer), nothing once it's fixed, its price otherwise. It agrees with Score,
+// which only counts hints opened from the opening up to the first pass.
+func HintCostAt(opensAt, at time.Time, runs []Run, index int) int {
+	if at.Before(opensAt) {
+		return 0
+	}
+	for _, r := range runs {
+		if r.Passed && !r.At.After(at) {
+			return 0
+		}
+	}
+	return HintCost(index)
+}
+
 // Opening is when a door opens.
 type Opening struct {
 	Door    int

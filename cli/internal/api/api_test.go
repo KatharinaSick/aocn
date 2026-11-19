@@ -294,17 +294,17 @@ func TestHints(t *testing.T) {
 
 func TestOpenHint(t *testing.T) {
 	f := serveAPI(t)
-	state, cost, err := OpenHint(context.Background(), 2, 2)
+	state, cost, err := OpenHint(context.Background(), 2, 2, 15)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cost != 15 || len(state.Hints) != 2 || state.Hints[1] != "second" || state.Next.Hint != 3 {
 		t.Errorf("got %+v, cost %d", state, cost)
 	}
-	if f.body != `{"hint":2}` {
+	if f.body != `{"hint":2,"cost":15}` {
 		t.Errorf("sent %s", f.body)
 	}
-	if _, _, err := OpenHint(context.Background(), 3, 1); err == nil {
+	if _, _, err := OpenHint(context.Background(), 3, 1, 5); err == nil {
 		t.Error("an answer without the hint should be an error")
 	}
 }

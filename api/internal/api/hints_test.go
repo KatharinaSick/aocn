@@ -140,6 +140,29 @@ func TestHintsAfterTheFixAreFree(t *testing.T) {
 	}
 }
 
+// A hint never costs what the player didn't agree to: asked for at one price, it's refused at
+// another. A door opening while a previewer was asked is how that happens.
+func TestOpenHintRefusesAnotherPrice(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(time.Hour), uploaded)
+	rec := openHint(h, "1", playerToken, `{"hint": 1, "cost": 0}`)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "costs 5 points now") {
+		t.Errorf("status %d, %s", rec.Code, rec.Body.String())
+	}
+	if body := rec.Body.String(); strings.Contains(body, "-hint") {
+		t.Errorf("another price gave a hint away: %s", body)
+	}
+	if len(h.results.hints) != 0 {
+		t.Errorf("opened %+v", h.results.hints)
+	}
+	if opened := readOpened(t, openHint(h, "1", playerToken, `{"hint": 1, "cost": 5}`)); opened.Cost != 5 {
+		t.Errorf("at its price: %+v", opened)
+	}
+	// One that's open already is free whatever was agreed to: nothing is spent.
+	if opened := readOpened(t, openHint(h, "1", playerToken, `{"hint": 1, "cost": 30}`)); opened.Cost != 0 {
+		t.Errorf("again: %+v", opened)
+	}
+}
+
 func TestOpenHintNeedsTheAccountAndTheDatabase(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, uploaded)
 	if rec := openHint(h, "1", cliToken(404), `{"hint": 1}`); rec.Code != http.StatusUnauthorized {

@@ -38,11 +38,13 @@ var (
 
 // Leaderboard is one leaderboard and its settings.
 type Leaderboard struct {
-	ID       string
-	OwnerID  int64
-	Name     string
-	Public   bool
-	OpenJoin bool
+	ID      string
+	OwnerID int64
+	// OwnerLogin is the owner's GitHub login.
+	OwnerLogin string
+	Name       string
+	Public     bool
+	OpenJoin   bool
 	// JoinCode is in the invite link. It's not the ID, so seeing a public board doesn't let
 	// anyone join it.
 	JoinCode string
@@ -55,9 +57,8 @@ type Leaderboard struct {
 
 // Member is a player on a leaderboard.
 type Member struct {
-	GitHubID  int64
-	Login     string
-	AvatarURL string
+	GitHubID int64
+	Login    string
 	// ProfilePublic is whether their card may be linked to.
 	ProfilePublic bool
 	JoinedAt      time.Time
@@ -88,13 +89,13 @@ func NewStore(pool *pgxpool.Pool) *Store {
 }
 
 // columns are what scan reads, with the member count.
-const columns = `l.id, l.owner_id, l.name, l.public, l.open_join, l.join_code, l.counts_until, l.created_at,
+const columns = `l.id, l.owner_id, (SELECT u.login FROM users u WHERE u.github_user_id = l.owner_id), l.name, l.public, l.open_join, l.join_code, l.counts_until, l.created_at,
 	(SELECT count(*) FROM leaderboard_members m WHERE m.leaderboard_id = l.id)`
 
 func scan(row pgx.Row) (Leaderboard, error) {
 	var l Leaderboard
 	var until *time.Time
-	err := row.Scan(&l.ID, &l.OwnerID, &l.Name, &l.Public, &l.OpenJoin, &l.JoinCode, &until, &l.CreatedAt, &l.Members)
+	err := row.Scan(&l.ID, &l.OwnerID, &l.OwnerLogin, &l.Name, &l.Public, &l.OpenJoin, &l.JoinCode, &until, &l.CreatedAt, &l.Members)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Leaderboard{}, ErrNotFound
 	}
@@ -175,7 +176,7 @@ func (s *Store) OfMember(ctx context.Context, githubUserID int64) ([]Leaderboard
 // Members returns who's on the leaderboard, in the order they joined.
 func (s *Store) Members(ctx context.Context, id string) ([]Member, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.github_user_id, u.login, u.avatar_url, u.profile_public, m.joined_at
+		SELECT u.github_user_id, u.login, u.profile_public, m.joined_at
 		FROM leaderboard_members m JOIN users u ON u.github_user_id = m.github_user_id
 		WHERE m.leaderboard_id = $1
 		ORDER BY m.joined_at, u.github_user_id`, id)
@@ -186,7 +187,7 @@ func (s *Store) Members(ctx context.Context, id string) ([]Member, error) {
 	members := []Member{}
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.GitHubID, &m.Login, &m.AvatarURL, &m.ProfilePublic, &m.JoinedAt); err != nil {
+		if err := rows.Scan(&m.GitHubID, &m.Login, &m.ProfilePublic, &m.JoinedAt); err != nil {
 			return nil, err
 		}
 		members = append(members, m)

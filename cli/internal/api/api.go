@@ -214,12 +214,14 @@ func Hints(ctx context.Context, door int) (HintState, error) {
 }
 
 // OpenHint opens hint number (from 1) of the door for the signed-in player, which is what
-// makes it cost points, and returns their hints with it. Opening one again is free. It
+// makes it cost points, and returns their hints with it. Opening one again is free. cost is
+// what the player agreed to pay: the API refuses if it costs something else by now. It
 // returns what this opening cost.
-func OpenHint(ctx context.Context, door, number int) (HintState, int, error) {
+func OpenHint(ctx context.Context, door, number, cost int) (HintState, int, error) {
 	body, err := json.Marshal(struct {
 		Hint int `json:"hint"`
-	}{number})
+		Cost int `json:"cost"`
+	}{number, cost})
 	if err != nil {
 		return HintState{}, 0, err
 	}

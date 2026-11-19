@@ -462,7 +462,7 @@ it signs you in.`,
 				fmt.Fprintln(out)
 			}
 
-			state, cost, err := api.OpenHint(cmd.Context(), open.Number, next.Hint)
+			state, cost, err := api.OpenHint(cmd.Context(), open.Number, next.Hint, next.Cost)
 			if err != nil {
 				return err
 			}
