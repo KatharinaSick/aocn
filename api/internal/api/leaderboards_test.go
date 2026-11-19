@@ -442,11 +442,39 @@ func TestLeaveAndRemove(t *testing.T) {
 	if code := remove(alice, 0); code != http.StatusNotFound {
 		t.Errorf("removing nobody: status %d", code)
 	}
-	// The same link lets them back in.
-	a.join(t, b, carol)
+	// Bob left on his own, so the link lets him back in.
+	a.join(t, b, bob)
+	// Carol was removed, so it doesn't, until alice lets her back in.
+	if rec := a.as(carol, http.MethodPost, "/join/"+b.JoinCode, `{}`); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "removed you") {
+		t.Errorf("rejoining after being removed: %d %s", rec.Code, rec.Body.String())
+	}
 	got := decode[boardResponse](t, a.as(alice, http.MethodGet, "/leaderboards/"+b.ID, ""), http.StatusOK)
-	if got.Members != 2 {
-		t.Errorf("members: %+v", got.Standings)
+	if got.Members != 2 || len(got.Removed) != 1 || got.Removed[0].ID != carol || got.Removed[0].Login != "carol" {
+		t.Errorf("owner's view: members %d, removed %+v", got.Members, got.Removed)
+	}
+	// Only the owner sees who was removed.
+	if got := decode[boardResponse](t, a.as(bob, http.MethodGet, "/leaderboards/"+b.ID, ""), http.StatusOK); got.Removed != nil {
+		t.Errorf("a member sees who was removed: %+v", got.Removed)
+	}
+	letBackIn := func(by, who int64) int {
+		return a.as(by, http.MethodDelete, fmt.Sprintf("/leaderboards/%s/removed/%d", b.ID, who), "").Code
+	}
+	if code := letBackIn(bob, carol); code != http.StatusForbidden {
+		t.Errorf("a member letting someone back in: status %d", code)
+	}
+	if code := letBackIn(mallory, carol); code != http.StatusNotFound {
+		t.Errorf("a stranger letting someone back in: status %d", code)
+	}
+	if code := letBackIn(alice, carol); code != http.StatusNoContent {
+		t.Errorf("letting back in: status %d", code)
+	}
+	if code := letBackIn(alice, carol); code != http.StatusNotFound {
+		t.Errorf("letting back in again: status %d", code)
+	}
+	a.join(t, b, carol)
+	got = decode[boardResponse](t, a.as(alice, http.MethodGet, "/leaderboards/"+b.ID, ""), http.StatusOK)
+	if got.Members != 3 || len(got.Removed) != 0 {
+		t.Errorf("after letting back in: members %d, removed %+v", got.Members, got.Removed)
 	}
 }
 

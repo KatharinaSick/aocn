@@ -135,17 +135,77 @@ func TestJoinAndRemove(t *testing.T) {
 		t.Errorf("player 3's boards: %+v", boards)
 	}
 
-	if err := store.Remove(ctx, l.ID, 2); err != nil {
+	if err := store.Leave(ctx, l.ID, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Remove(ctx, l.ID, 2); !errors.Is(err, ErrNotFound) {
-		t.Errorf("removing again: %v", err)
+	if err := store.Leave(ctx, l.ID, 2); !errors.Is(err, ErrNotFound) {
+		t.Errorf("leaving again: %v", err)
 	}
 	if member, _ := store.IsMember(ctx, l.ID, 2); member {
 		t.Error("still a member")
 	}
+	// Leaving on your own keeps the way back open.
+	if err := store.Join(ctx, l.ID, l.JoinCode, 2, now); err != nil {
+		t.Errorf("joining after leaving: %v", err)
+	}
 	if err := store.Join(ctx, "AAAAAAAAAAAAAAAA", "x", 2, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown board: %v", err)
+	}
+}
+
+// Someone the owner removed stays out, with the link or without, until the owner lets them
+// back in. Letting them back in doesn't add them.
+func TestRemoveKeepsThemOut(t *testing.T) {
+	store, _ := testStore(t, 3)
+	ctx := context.Background()
+	l, err := store.Create(ctx, 1, "board", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+	if _, err := store.Update(ctx, l.ID, Changes{Public: &yes, OpenJoin: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Join(ctx, l.ID, l.JoinCode, 2, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Remove(ctx, l.ID, 3, now); !errors.Is(err, ErrNotFound) {
+		t.Errorf("removing a non-member: %v", err)
+	}
+	if err := store.Remove(ctx, l.ID, 2, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if member, _ := store.IsMember(ctx, l.ID, 2); member {
+		t.Error("still a member")
+	}
+	for name, code := range map[string]string{"with the link": l.JoinCode, "open": ""} {
+		if err := store.Join(ctx, l.ID, code, 2, now); !errors.Is(err, ErrBanned) {
+			t.Errorf("joining %s: %v", name, err)
+		}
+	}
+	banned, err := store.Banned(ctx, l.ID)
+	if err != nil || len(banned) != 1 || banned[0].GitHubID != 2 || banned[0].Login != "player2" || !banned[0].RemovedAt.Equal(now.Add(time.Hour)) {
+		t.Errorf("banned: %+v, %v", banned, err)
+	}
+
+	if err := store.Unban(ctx, l.ID, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Unban(ctx, l.ID, 2); !errors.Is(err, ErrNotFound) {
+		t.Errorf("letting back in again: %v", err)
+	}
+	if member, _ := store.IsMember(ctx, l.ID, 2); member {
+		t.Error("letting back in added them")
+	}
+	if err := store.Join(ctx, l.ID, l.JoinCode, 2, now); err != nil {
+		t.Errorf("joining after being let back in: %v", err)
+	}
+	// Deleting the board takes its list along.
+	if err := store.Remove(ctx, l.ID, 2, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete(ctx, l.ID); err != nil {
+		t.Errorf("deleting with someone removed: %v", err)
 	}
 }
 

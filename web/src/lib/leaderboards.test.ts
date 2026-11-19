@@ -113,6 +113,7 @@ const board = {
     { login: '' },
   ],
   together: 2,
+  removed: [{ id: 4, login: 'mallory', removedAt: '2026-12-02T10:00:00Z' }, { id: 0, login: 'nobody' }],
 };
 
 describe('readBoard', () => {
@@ -125,6 +126,8 @@ describe('readBoard', () => {
     expect(b.standings).toHaveLength(2);
     expect(b.standings[0].doors[0]).toEqual({ door: 1, points: 95, hints: 1, failedVerifies: 1 });
     expect(readBoard({ ...board, joinCode: undefined, countsUntil: null })).toMatchObject({ joinCode: null, countsUntil: null });
+    expect(b.removed).toEqual([{ id: 4, login: 'mallory', removedAt: new Date('2026-12-02T10:00:00Z') }]);
+    expect(readBoard({ ...board, removed: undefined })!.removed).toEqual([]);
     expect(readBoard({ name: 'x' })).toBeNull();
   });
 });

@@ -66,6 +66,13 @@ export interface BoardDoor {
   counts: boolean;
 }
 
+/** Someone the owner removed: they can't join again until the owner lets them back in. */
+export interface RemovedMember {
+  id: number;
+  login: string;
+  removedAt: Date | null;
+}
+
 export interface Board {
   id: string;
   name: string;
@@ -82,6 +89,8 @@ export interface Board {
   doors: BoardDoor[];
   standings: Standing[];
   together: number;
+  /** Who the owner removed; only the owner gets it. */
+  removed: RemovedMember[];
 }
 
 export interface JoinPreview {
@@ -196,6 +205,9 @@ export function readBoard(b: Json): Board | null {
       .map((d) => ({ door: num(d.door), opensAt: date(d.opensAt) ?? new Date(0), counts: bool(d.counts) })),
     standings: b.standings.map(readStanding).filter((s): s is Standing => s !== null),
     together: num(b.together),
+    removed: (Array.isArray(b.removed) ? b.removed.filter(isRecord) : [])
+      .map((r) => ({ id: num(r.id), login: str(r.login), removedAt: date(r.removedAt) }))
+      .filter((r) => r.id > 0 && r.login !== ''),
   };
 }
 

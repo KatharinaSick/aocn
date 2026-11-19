@@ -26,6 +26,7 @@ import {
   toLocalInput,
   type Answer,
   type Board,
+  type RemovedMember,
   type Standing,
 } from '../lib/leaderboards';
 
@@ -42,7 +43,7 @@ const now = computed(() => (state.value.kind === 'ready' ? state.value.now : new
 let id = '';
 let path = '/';
 // What the page says after a change, done or why not, next to where it was made.
-type Where = 'head' | 'standings' | 'invite' | 'settings' | 'leave';
+type Where = 'head' | 'standings' | 'invite' | 'settings' | 'removed' | 'leave';
 const message = ref<{ where: Where | ''; text: string }>({ where: '', text: '' });
 const say = (where: Where, text: string) => (message.value = { where, text });
 const busy = ref(false);
@@ -52,7 +53,6 @@ const expanded = ref(new Set<number>());
 // Two-step actions: what's waiting for a second click.
 const confirming = ref<'' | 'leave' | 'invite' | 'delete' | 'deadline'>('');
 const removing = ref<Standing | null>(null);
-const alsoNewInvite = ref(false);
 
 // The owner's settings, as edited.
 const nameInput = ref('');
@@ -143,12 +143,20 @@ async function leave(me: Standing) {
 async function remove() {
   const who = removing.value;
   if (!who) return;
-  const ok = await change('standings', callApi('DELETE', `/leaderboards/${id}/members/${who.id}`, readNothing), `@${who.login} is off the leaderboard`);
-  if (ok && alsoNewInvite.value) {
-    await change('standings', callApi('POST', `/leaderboards/${id}/invite`, readNothing), `@${who.login} is off the leaderboard, and the old invite link stopped working`);
-  }
+  await change(
+    'standings',
+    callApi('DELETE', `/leaderboards/${id}/members/${who.id}`, readNothing),
+    `@${who.login} is off the leaderboard, and can't join again until you let them back in under settings`,
+  );
   removing.value = null;
-  alsoNewInvite.value = false;
+}
+
+async function letBackIn(who: RemovedMember) {
+  await change(
+    'removed',
+    callApi('DELETE', `/leaderboards/${id}/removed/${who.id}`, readNothing),
+    `@${who.login} can join again. They're not back on the leaderboard until they do`,
+  );
 }
 
 async function newInvite() {
@@ -309,11 +317,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
                     <!-- Only the owner removes someone, and never themselves. -->
                     <template v-if="board.you.owner && !row.owner">
                       <div v-if="removing && removing.id === row.id" class="leaderboardBoardConfirm">
-                        <p>Remove @{{ row.login }}? They can rejoin with the invite link.</p>
-                        <label class="leaderboardBoardCheck">
-                          <input v-model="alsoNewInvite" type="checkbox" />
-                          also make a new invite link, so the old one stops working
-                        </label>
+                        <p>Remove @{{ row.login }}? They can't join again, with the invite link or without, until you let them back in under settings.</p>
                         <div class="leaderboardBoardActions">
                           <button class="button button-primary" type="button" :disabled="busy" @click="remove">remove @{{ row.login }}</button>
                           <button class="button button-secondary" type="button" @click="removing = null">cancel</button>
@@ -323,10 +327,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
                         <button
                           class="button button-text"
                           type="button"
-                          @click="
-                            removing = row;
-                            alsoNewInvite = false;
-                          "
+                          @click="removing = row"
                         >
                           remove @{{ row.login }}
                         </button>
@@ -434,6 +435,18 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
         </form>
 
         <p v-if="message.where === 'settings'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+
+        <div class="leaderboardBoardForm">
+          <h3 class="textInputLabel">removed</h3>
+          <ul v-if="board.removed.length > 0" class="leaderboardBoardRemoved">
+            <li v-for="who in board.removed" :key="who.id" class="leaderboardBoardActions">
+              <span class="leaderboardBoardGrow">@{{ who.login }}</span>
+              <button class="button button-text" type="button" :disabled="busy" @click="letBackIn(who)">let @{{ who.login }} back in</button>
+            </li>
+          </ul>
+          <p v-else class="leaderboardBoardQuiet">Nobody. Whoever you remove can't join again until you let them back in here.</p>
+          <p v-if="message.where === 'removed'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+        </div>
 
         <div v-if="confirming === 'delete'" class="leaderboardBoardConfirm">
           <p>Delete {{ board.name }} for everyone? This can't be undone. Everyone's progress stays, on their card and on other leaderboards.</p>
@@ -653,6 +666,14 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
   margin: 0;
   padding: 0;
   border: none;
+}
+
+.leaderboardBoardRemoved {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .leaderboardBoardCheck {

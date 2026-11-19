@@ -31,6 +31,7 @@ import (
 //     deletes it. A member who isn't the owner gets 403 for those; anyone else the 404.
 //   - Joining needs the invite link's code, which isn't the board's ID: seeing a public board
 //     doesn't let anyone in, unless its owner made it open.
+//   - Someone the owner removed can't join again, whichever way, until the owner lets them.
 //   - Every change comes from the website's session cookie, which is SameSite=Lax, and only
 //     as JSON, which a form on another site can't send.
 
@@ -59,7 +60,10 @@ type LeaderboardStore interface {
 	Members(ctx context.Context, id string) ([]leaderboards.Member, error)
 	IsMember(ctx context.Context, id string, githubUserID int64) (bool, error)
 	Join(ctx context.Context, id, code string, githubUserID int64, now time.Time) error
-	Remove(ctx context.Context, id string, githubUserID int64) error
+	Leave(ctx context.Context, id string, githubUserID int64) error
+	Remove(ctx context.Context, id string, githubUserID int64, now time.Time) error
+	Banned(ctx context.Context, id string) ([]leaderboards.Banned, error)
+	Unban(ctx context.Context, id string, githubUserID int64) error
 	Update(ctx context.Context, id string, c leaderboards.Changes) (leaderboards.Leaderboard, error)
 	NewJoinCode(ctx context.Context, id string) (string, error)
 	Delete(ctx context.Context, id string) error
@@ -285,6 +289,13 @@ type boardDoor struct {
 	Counts bool `json:"counts"`
 }
 
+// removedMember is someone the owner removed: they can't join again until let back in.
+type removedMember struct {
+	ID        int64     `json:"id"`
+	Login     string    `json:"login"`
+	RemovedAt time.Time `json:"removedAt"`
+}
+
 type boardResponse struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
@@ -305,9 +316,11 @@ type boardResponse struct {
 		Owner    bool `json:"owner"`
 	} `json:"you"`
 	// JoinCode is for the invite link, only for members.
-	JoinCode  string      `json:"joinCode,omitempty"`
-	Doors     []boardDoor `json:"doors"`
-	Standings []standing  `json:"standings"`
+	JoinCode string `json:"joinCode,omitempty"`
+	// Removed are who the owner removed and hasn't let back in, only for the owner.
+	Removed   []removedMember `json:"removed,omitempty"`
+	Doors     []boardDoor     `json:"doors"`
+	Standings []standing      `json:"standings"`
 	// Together is how many doors everyone fixed, added up.
 	Together int `json:"together"`
 }
@@ -510,7 +523,19 @@ func handleLeaderboard(log app.Logger, l Leaderboards) http.Handler {
 			writeTryAgain(log, w, "Working out a leaderboard's standings failed", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, l.boardResponse(b, members, ranked, v, member, now))
+		resp := l.boardResponse(b, members, ranked, v, member, now)
+		if resp.You.Owner {
+			banned, err := l.Store.Banned(ctx, b.ID)
+			if err != nil {
+				writeTryAgain(log, w, "Listing who was removed from a leaderboard failed", err)
+				return
+			}
+			resp.Removed = []removedMember{}
+			for _, m := range banned {
+				resp.Removed = append(resp.Removed, removedMember{ID: m.GitHubID, Login: m.Login, RemovedAt: m.RemovedAt})
+			}
+		}
+		writeJSON(w, http.StatusOK, resp)
 	})
 }
 
@@ -691,7 +716,8 @@ func handleDeleteLeaderboard(log app.Logger, l Leaderboards) http.Handler {
 }
 
 // handleRemoveMember takes a member off a board: the owner removes anyone but themselves,
-// and every other member can leave. The owner can only delete the board.
+// who then can't join again until the owner lets them, and every other member can leave,
+// and join again whenever they like. The owner can only delete the board.
 func handleRemoveMember(log app.Logger, l Leaderboards) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
@@ -718,7 +744,12 @@ func handleRemoveMember(log app.Logger, l Leaderboards) http.Handler {
 			writeJSONError(w, http.StatusForbidden, "only its owner can remove someone else")
 			return
 		}
-		err = l.Store.Remove(r.Context(), b.ID, user)
+		byOwner := v.id != user
+		if byOwner {
+			err = l.Store.Remove(r.Context(), b.ID, user, l.now())
+		} else {
+			err = l.Store.Leave(r.Context(), b.ID, user)
+		}
 		if errors.Is(err, leaderboards.ErrNotFound) {
 			writeJSONError(w, http.StatusNotFound, "no such member")
 			return
@@ -727,7 +758,35 @@ func handleRemoveMember(log app.Logger, l Leaderboards) http.Handler {
 			writeTryAgain(log, w, "Removing a member failed", err)
 			return
 		}
-		log.Info("Leaderboard member removed", "leaderboard", b.ID, "github_user_id", user, "by_owner", v.id != user)
+		log.Info("Leaderboard member removed", "leaderboard", b.ID, "github_user_id", user, "by_owner", byOwner)
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+// handleLetBackIn takes someone off the board's list of removed players, for its owner: they
+// may join again, with the invite link or, if the board is open, without. It doesn't add them.
+func handleLetBackIn(log app.Logger, l Leaderboards) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		b, ok := l.findOwned(log, w, r)
+		if !ok {
+			return
+		}
+		user, err := strconv.ParseInt(r.PathValue("user"), 10, 64)
+		if err != nil || user <= 0 {
+			writeJSONError(w, http.StatusNotFound, "they weren't removed")
+			return
+		}
+		err = l.Store.Unban(r.Context(), b.ID, user)
+		if errors.Is(err, leaderboards.ErrNotFound) {
+			writeJSONError(w, http.StatusNotFound, "they weren't removed")
+			return
+		}
+		if err != nil {
+			writeTryAgain(log, w, "Letting someone back into a leaderboard failed", err)
+			return
+		}
+		log.Info("Leaderboard member let back in", "leaderboard", b.ID, "github_user_id", user)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
@@ -875,6 +934,10 @@ func (l Leaderboards) join(log app.Logger, w http.ResponseWriter, r *http.Reques
 		} else {
 			writeJSONError(w, http.StatusForbidden, "this leaderboard is invite only: ask its owner for the link")
 		}
+		return
+	}
+	if errors.Is(err, leaderboards.ErrBanned) {
+		writeJSONError(w, http.StatusForbidden, "the owner removed you from this leaderboard. Only they can let you back in")
 		return
 	}
 	if errors.Is(err, leaderboards.ErrFull) {

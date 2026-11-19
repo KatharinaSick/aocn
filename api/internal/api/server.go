@@ -79,6 +79,7 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	mux.Handle("POST /leaderboards/{id}/invite", handleNewInvite(log, boards))
 	mux.Handle("POST /leaderboards/{id}/join", joins(handleJoinOpen(log, boards)))
 	mux.Handle("DELETE /leaderboards/{id}/members/{user}", handleRemoveMember(log, boards))
+	mux.Handle("DELETE /leaderboards/{id}/removed/{user}", handleLetBackIn(log, boards))
 	mux.Handle("GET /join/{code}", joins(handleJoinPreview(log, boards)))
 	mux.Handle("POST /join/{code}", joins(handleJoinWithCode(log, boards)))
 }

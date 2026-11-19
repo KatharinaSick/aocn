@@ -60,6 +60,7 @@ const board = {
     { rank: 2, id: 3, login: 'third-example', avatarUrl: '', profilePublic: false, you: false, owner: false, points: 100, failedVerifies: 2, fixed: 1, doors: [{ door: 1, points: 100, hints: 0, failedVerifies: 2 }] },
   ],
   together: 4,
+  removed: [{ id: 4, login: 'removed-example', removedAt: '2026-12-02T10:00:00+01:00' }],
 };
 
 createServer((req, res) => {

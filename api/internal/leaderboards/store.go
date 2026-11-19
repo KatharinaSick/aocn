@@ -32,6 +32,8 @@ var (
 	// ErrClosed means the way in no longer works: the invite link was replaced, or the board
 	// isn't open to anyone anymore.
 	ErrClosed = errors.New("leaderboard can't be joined this way")
+	// ErrBanned means the owner removed the player, and hasn't let them back in.
+	ErrBanned = errors.New("removed from this leaderboard")
 )
 
 // Leaderboard is one leaderboard and its settings.
@@ -206,7 +208,8 @@ func (s *Store) IsMember(ctx context.Context, id string, githubUserID int64) (bo
 // the board is public and open to anyone. Both are checked again while the board is locked,
 // so a link replaced a moment ago doesn't let anyone in anymore. Joining one they're in
 // changes nothing. It's ErrClosed if the way in doesn't work, ErrFull at MaxMembers and
-// ErrNotFound if the board is gone. The player must exist.
+// ErrNotFound if the board is gone, and ErrBanned if its owner removed them. The player must
+// exist.
 func (s *Store) Join(ctx context.Context, id, code string, githubUserID int64, now time.Time) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -239,6 +242,18 @@ func (s *Store) Join(ctx context.Context, id, code string, githubUserID int64, n
 	if member {
 		return nil
 	}
+	// Under the board's lock too, so removing someone and their join at the same moment
+	// can't let them back in.
+	var banned bool
+	if err := tx.QueryRow(ctx,
+		"SELECT EXISTS (SELECT 1 FROM leaderboard_bans WHERE leaderboard_id = $1 AND github_user_id = $2)",
+		id, githubUserID,
+	).Scan(&banned); err != nil {
+		return err
+	}
+	if banned {
+		return ErrBanned
+	}
 	if members >= MaxMembers {
 		return ErrFull
 	}
@@ -251,11 +266,87 @@ func (s *Store) Join(ctx context.Context, id, code string, githubUserID int64, n
 	return tx.Commit(ctx)
 }
 
-// Remove takes the player off the leaderboard. It's ErrNotFound if they weren't on it. Whether
-// they may be removed (the owner can't) is the API's to decide.
-func (s *Store) Remove(ctx context.Context, id string, githubUserID int64) error {
+// Leave takes the player off the leaderboard, on their own: they may join again. It's
+// ErrNotFound if they weren't on it. Whether they may leave (the owner can't) is the API's to
+// decide.
+func (s *Store) Leave(ctx context.Context, id string, githubUserID int64) error {
 	tag, err := s.pool.Exec(ctx,
 		"DELETE FROM leaderboard_members WHERE leaderboard_id = $1 AND github_user_id = $2", id, githubUserID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// Remove takes the player off the leaderboard for its owner, and keeps them off: they can't
+// join again until Unban. It's ErrNotFound if they weren't on it. Whether they may be removed
+// (the owner can't) is the API's to decide.
+func (s *Store) Remove(ctx context.Context, id string, githubUserID int64, now time.Time) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) // a no-op once committed
+
+	// The same lock as Join's, so a join at the same moment comes either before (and is
+	// removed) or after (and is refused).
+	if _, err := tx.Exec(ctx, "SELECT 1 FROM leaderboards WHERE id = $1 FOR UPDATE", id); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx,
+		"DELETE FROM leaderboard_members WHERE leaderboard_id = $1 AND github_user_id = $2", id, githubUserID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if _, err := tx.Exec(ctx,
+		"INSERT INTO leaderboard_bans (leaderboard_id, github_user_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+		id, githubUserID, now,
+	); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// Banned is a player the owner removed from a leaderboard.
+type Banned struct {
+	GitHubID  int64
+	Login     string
+	RemovedAt time.Time
+}
+
+// Banned returns who the owner removed and hasn't let back in, most recent first.
+func (s *Store) Banned(ctx context.Context, id string) ([]Banned, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT u.github_user_id, u.login, b.created_at
+		FROM leaderboard_bans b JOIN users u ON u.github_user_id = b.github_user_id
+		WHERE b.leaderboard_id = $1
+		ORDER BY b.created_at DESC, u.github_user_id`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	banned := []Banned{}
+	for rows.Next() {
+		var b Banned
+		if err := rows.Scan(&b.GitHubID, &b.Login, &b.RemovedAt); err != nil {
+			return nil, err
+		}
+		banned = append(banned, b)
+	}
+	return banned, rows.Err()
+}
+
+// Unban lets a removed player join the leaderboard again: it doesn't add them. It's
+// ErrNotFound if they weren't removed.
+func (s *Store) Unban(ctx context.Context, id string, githubUserID int64) error {
+	tag, err := s.pool.Exec(ctx,
+		"DELETE FROM leaderboard_bans WHERE leaderboard_id = $1 AND github_user_id = $2", id, githubUserID)
 	if err != nil {
 		return err
 	}
