@@ -30,7 +30,7 @@ const JOIN_CODE = 'ExampleCode00000';
 
 const profile = {
   login: 'example',
- 
+  avatarUrl: '',
   since: '2026-11-20T09:00:00Z',
   doors: [{ door: 1, solvedAt: '2026-12-01T06:30:00+01:00' }],
   public: true,

@@ -18,6 +18,7 @@ import {
   readJoinPreview,
   readMyBoards,
   readNothing,
+  skippedLocalTime,
   toLocalInput,
 } from './leaderboards';
 
@@ -172,6 +173,23 @@ describe('deadlines', () => {
     expect(toLocalInput(d)).toBe('2026-12-31T23:59');
     for (const value of ['', '2026-12-31', '2026-02-30T10:00', '2026-12-31T25:00', 'tomorrow']) {
       expect(fromLocalInput(value)).toBeNull();
+    }
+  });
+
+  it('tells a time the clocks skip from one that isn\'t a time', () => {
+    const tz = process.env.TZ;
+    // Node picks up a new TZ right away. Vienna springs forward at 02:00 on March 29, 2026.
+    process.env.TZ = 'Europe/Vienna';
+    try {
+      expect(fromLocalInput('2026-03-29T02:30')).toBeNull();
+      expect(skippedLocalTime('2026-03-29T02:30')).toBe(true);
+      expect(skippedLocalTime('2026-03-29T03:30')).toBe(false);
+      for (const value of ['', '2026-02-30T10:00', '2026-12-31T25:00', 'tomorrow']) {
+        expect(skippedLocalTime(value)).toBe(false);
+      }
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
     }
   });
 

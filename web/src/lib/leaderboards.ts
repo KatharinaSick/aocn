@@ -347,15 +347,36 @@ export function toLocalInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** What a datetime-local input holds, as a moment in the browser's time zone, or null. */
+const LOCAL_INPUT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+/**
+ * What a datetime-local input holds, as a moment in the browser's time zone, or null. A time
+ * the clocks skip (spring forward) is null too: see skippedLocalTime. One that happens twice
+ * (fall back) is the first of the two.
+ */
 export function fromLocalInput(value: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  const m = LOCAL_INPUT.exec(value);
   if (!m) return null;
   const [year, month, day, hour, minute] = m.slice(1).map(Number);
   const d = new Date(year, month - 1, day, hour, minute);
   // new Date rolls over impossible dates (Feb 30); they're refused instead.
   if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day || d.getHours() !== hour) return null;
   return d;
+}
+
+/**
+ * Whether a datetime-local value is a real date and time that doesn't exist in the browser's
+ * time zone, because the clocks skip it (02:30 the night they spring forward). The settings
+ * say so instead of calling it "not a date".
+ */
+export function skippedLocalTime(value: string): boolean {
+  const m = LOCAL_INPUT.exec(value);
+  if (!m) return false;
+  const [year, month, day, hour, minute] = m.slice(1).map(Number);
+  // The same wall-clock time in UTC, which skips nothing: is it a date and a time at all?
+  const utc = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  const real = utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day && utc.getUTCHours() === hour && hour < 24 && minute < 60;
+  return real && fromLocalInput(value) === null;
 }
 
 /**

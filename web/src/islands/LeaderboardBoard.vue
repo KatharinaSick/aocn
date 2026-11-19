@@ -5,7 +5,7 @@
 // Nothing here decides who may do what: the API answers each request as it sees fit, and the
 // page only leaves out buttons that would be refused anyway. Every change is followed by a
 // fresh load, so what's shown is what the API has.
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import '../styles/controls.css';
 import { loginHref, profileHref } from '../lib/account';
 import {
@@ -25,6 +25,7 @@ import {
   readBoard,
   rowKey,
   readNothing,
+  skippedLocalTime,
   toLocalInput,
   type Answer,
   type Board,
@@ -47,29 +48,98 @@ let path = '/';
 // What the page says after a change, done or why not, next to where it was made.
 type Where = 'head' | 'standings' | 'invite' | 'settings' | 'removed' | 'leave';
 const message = ref<{ where: Where | ''; text: string }>({ where: '', text: '' });
-const say = (where: Where, text: string) => (message.value = { where, text });
+// The same text for screen readers, in a live region that's always on the page: one that
+// appears with its text already in it isn't announced by every screen reader.
+const announcement = ref('');
 const busy = ref(false);
+const root = ref<HTMLElement | null>(null);
+
+/**
+ * Says how a change went, next to where it was made. If the button that had the focus is
+ * gone (a confirm step closed, or joining took the join button away), the message gets it,
+ * so keyboard and screen reader users aren't left at the top of the page.
+ */
+async function say(where: Where, text: string) {
+  message.value = { where, text };
+  // Emptied first, so the same text twice ("copied") is announced twice.
+  announcement.value = '';
+  await nextTick();
+  announcement.value = text;
+  const focused = document.activeElement;
+  if (!focused || focused === document.body || !focused.isConnected) {
+    root.value?.querySelector<HTMLElement>(`[data-message="${where}"]`)?.focus();
+  }
+}
 
 // Which rows show their doors in words.
 const expanded = ref(new Set<string>());
 // Two-step actions: what's waiting for a second click.
-const confirming = ref<'' | 'leave' | 'invite' | 'delete' | 'deadline'>('');
+type Confirm = '' | 'leave' | 'invite' | 'delete' | 'deadline';
+const confirming = ref<Confirm>('');
 const removing = ref<Standing | null>(null);
+
+/** Opens a two-step action and moves the focus to its first button, since its opener is gone. */
+async function ask(what: Exclude<Confirm, ''>) {
+  confirming.value = what;
+  await nextTick();
+  root.value?.querySelector<HTMLElement>(`[data-confirm="${what}"] button`)?.focus();
+}
+
+/** Closes a two-step action and gives the focus back to what opened it. */
+async function cancel(what: Exclude<Confirm, ''>) {
+  confirming.value = '';
+  await nextTick();
+  root.value?.querySelector<HTMLElement>(`[data-opens="${what}"]`)?.focus();
+}
+
+async function askRemove(row: Standing) {
+  removing.value = row;
+  await nextTick();
+  root.value?.querySelector<HTMLElement>(`[data-confirm="remove-${row.id}"] button`)?.focus();
+}
+
+async function cancelRemove(row: Standing) {
+  removing.value = null;
+  await nextTick();
+  root.value?.querySelector<HTMLElement>(`[data-opens="remove-${row.id}"]`)?.focus();
+}
 
 // The owner's settings, as edited.
 const nameInput = ref('');
 const deadlineInput = ref('');
+// The radios, as picked. Kept apart from the board, so a refused change can put them back.
+const visibility = ref<'private' | 'public'>('private');
+const joining = ref<'invite' | 'open'>('invite');
+
+/** Sets the radios to what the board has. */
+function syncChoices() {
+  if (!board.value) return;
+  visibility.value = board.value.public ? 'public' : 'private';
+  joining.value = board.value.openJoin ? 'open' : 'invite';
+}
+
+// Counts loads, so an answer that arrives after a newer one is dropped.
+let loads = 0;
 
 async function load() {
+  const n = ++loads;
+  const before = board.value;
   const answer = await callApi('GET', `/leaderboards/${id}`, readBoard);
+  if (n !== loads) return;
   if (answer.state === 'ok') {
-    state.value = { kind: 'ready', board: answer.value, now: new Date() };
-    nameInput.value = answer.value.name;
-    deadlineInput.value = answer.value.countsUntil ? toLocalInput(answer.value.countsUntil) : '';
-    showTitle(answer.value.name);
+    const b = answer.value;
+    state.value = { kind: 'ready', board: b, now: new Date() };
+    // An owner halfway through typing a name or a deadline keeps it: only fields that still
+    // show what the board had are brought up to date.
+    const deadlineOf = (until: Date | null) => (until ? toLocalInput(until) : '');
+    if (!before || nameInput.value === before.name) nameInput.value = b.name;
+    if (!before || deadlineInput.value === deadlineOf(before.countsUntil)) deadlineInput.value = deadlineOf(b.countsUntil);
+    syncChoices();
+    showTitle(b.name);
   } else if (answer.state === 'missing') {
     showTitle('no leaderboard here');
     const me = await callApi('GET', '/me', (b) => (typeof b.login === 'string' ? b.login : null));
+    if (n !== loads) return;
     state.value = { kind: 'missing', loggedIn: me.state === 'ok' };
   } else {
     state.value = { kind: 'unavailable' };
@@ -97,23 +167,45 @@ onMounted(async () => {
   await load();
 });
 
-/** Runs a change, says how it went where it was made, and loads the board again. */
+/** What the page says when a change didn't go through. */
+function whyNot<T>(answer: Answer<T>): string {
+  if (answer.state === 'refused') return answer.message;
+  if (answer.state === 'loggedOut') return "you're logged out. Log in again, then try once more";
+  if (answer.state === 'missing') return 'this leaderboard is gone';
+  return "that didn't work, try again in a minute";
+}
+
+/**
+ * Runs a change, loads the board again, and says how it went where it was made. Everything
+ * stays disabled until the board is loaded again, so a second change never starts from what
+ * the first one replaced. A refused change puts the radios back to what the board has.
+ */
 async function change<T>(where: Where, request: Promise<Answer<T>>, done: string): Promise<boolean> {
+  // Disabling the button takes the focus away from it; it gets it back if it's still there.
+  const from = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   busy.value = true;
   message.value = { where: '', text: '' };
-  const answer = await request;
-  busy.value = false;
-  confirming.value = '';
-  if (answer.state === 'ok') {
-    say(where, done);
-    await load();
-    return true;
+  let text = '';
+  let ok = false;
+  try {
+    const answer = await request;
+    confirming.value = '';
+    removing.value = null;
+    if (answer.state === 'ok') {
+      await load();
+      text = done;
+      ok = true;
+    } else {
+      syncChoices();
+      text = whyNot(answer);
+    }
+  } finally {
+    busy.value = false;
   }
-  if (answer.state === 'refused') say(where, answer.message);
-  else if (answer.state === 'loggedOut') say(where, "you're logged out. Log in again, then try once more");
-  else if (answer.state === 'missing') say(where, 'this leaderboard is gone');
-  else say(where, "that didn't work, try again in a minute");
-  return false;
+  await nextTick();
+  if (from?.isConnected && !from.matches(':disabled')) from.focus();
+  await say(where, text);
+  return ok;
 }
 
 const patch = (body: Record<string, unknown>, done: string) =>
@@ -150,7 +242,6 @@ async function remove() {
     callApi('DELETE', `/leaderboards/${id}/members/${who.id}`, readNothing),
     `@${who.login} is off the leaderboard, and can't join again until you let them back in under settings`,
   );
-  removing.value = null;
 }
 
 async function letBackIn(who: RemovedMember) {
@@ -183,11 +274,16 @@ const deadlineDrops = computed(() => !!board.value && deadlineDropsFixes(board.v
 
 async function saveDeadline(confirmed: boolean) {
   if (deadlineInput.value && !newDeadline.value) {
-    say('settings', "that deadline isn't a date and a time");
+    say(
+      'settings',
+      skippedLocalTime(deadlineInput.value)
+        ? "that time doesn't happen in your time zone: the clocks skip it that night. Pick another"
+        : "that deadline isn't a date and a time",
+    );
     return;
   }
   if (!confirmed && deadlineDrops.value) {
-    confirming.value = 'deadline';
+    await ask('deadline');
     return;
   }
   const until = newDeadline.value;
@@ -224,7 +320,8 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
 </script>
 
 <template>
-  <div class="leaderboardBoard" :data-state="state.kind">
+  <div ref="root" class="leaderboardBoard" :data-state="state.kind">
+    <p class="srOnly" role="status">{{ announcement }}</p>
     <p v-if="state.kind === 'loading'" class="leaderboardBoardQuiet" role="status">loading the standings…</p>
 
     <template v-else-if="state.kind === 'missing'">
@@ -256,7 +353,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
           <a v-else class="button button-primary" :href="loginHref(path)">log in with GitHub to join</a>
           <span class="leaderboardBoardQuiet">Members see your GitHub name and your points. Anyone with this page's link sees your points too, and your name if your profile card is public.</span>
         </div>
-        <p v-if="message.where === 'head'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+        <p v-if="message.where === 'head'" class="leaderboardBoardMessage" data-message="head" tabindex="-1">{{ message.text }}</p>
       </section>
 
       <section class="leaderboardBoardSection" aria-labelledby="leaderboardBoardStandings">
@@ -318,18 +415,19 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
                     </ul>
                     <!-- Only the owner removes someone, and never themselves. -->
                     <template v-if="board.you.owner && !row.owner">
-                      <div v-if="removing && removing.id === row.id" class="leaderboardBoardConfirm">
+                      <div v-if="removing && removing.id === row.id" class="leaderboardBoardConfirm" :data-confirm="`remove-${row.id}`">
                         <p>Remove @{{ row.login }}? They can't join again, with the invite link or without, until you let them back in under settings.</p>
                         <div class="leaderboardBoardActions">
                           <button class="button button-primary" type="button" :disabled="busy" @click="remove">remove @{{ row.login }}</button>
-                          <button class="button button-secondary" type="button" @click="removing = null">cancel</button>
+                          <button class="button button-secondary" type="button" @click="cancelRemove(row)">cancel</button>
                         </div>
                       </div>
                       <p v-else>
                         <button
                           class="button button-text"
                           type="button"
-                          @click="removing = row"
+                          :data-opens="`remove-${row.id}`"
+                          @click="askRemove(row)"
                         >
                           remove @{{ row.login }}
                         </button>
@@ -341,7 +439,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
             </tbody>
           </table>
         </div>
-        <p v-if="message.where === 'standings'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+        <p v-if="message.where === 'standings'" class="leaderboardBoardMessage" data-message="standings" tabindex="-1">{{ message.text }}</p>
         <p class="leaderboardBoardQuiet leaderboardBoardText">
           Together: {{ plural(board.together, 'door', 'doors') }} fixed. Same points? Fewer failed verifies is ahead.
           Select someone's doors for the details. <a href="/how-it-works#man-points">How points work</a>
@@ -358,17 +456,17 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
           <input id="leaderboardBoardInviteLink" class="textInput leaderboardBoardGrow" type="text" readonly :value="invite" @focus="($event.target as HTMLInputElement).select()" />
           <button class="button button-primary" type="button" @click="copyInvite(invite)">copy</button>
         </div>
-        <p v-if="message.where === 'invite'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+        <p v-if="message.where === 'invite'" class="leaderboardBoardMessage" data-message="invite" tabindex="-1">{{ message.text }}</p>
         <template v-if="board.you.owner">
-          <div v-if="confirming === 'invite'" class="leaderboardBoardConfirm">
+          <div v-if="confirming === 'invite'" class="leaderboardBoardConfirm" data-confirm="invite">
             <p>The current link stops working. Anyone who has it can't join with it anymore.</p>
             <div class="leaderboardBoardActions">
               <button class="button button-primary" type="button" :disabled="busy" @click="newInvite">make a new link</button>
-              <button class="button button-secondary" type="button" @click="confirming = ''">cancel</button>
+              <button class="button button-secondary" type="button" @click="cancel('invite')">cancel</button>
             </div>
           </div>
           <p v-else>
-            <button class="button button-text" type="button" @click="confirming = 'invite'">make a new invite link</button>
+            <button class="button button-text" type="button" data-opens="invite" @click="ask('invite')">make a new invite link</button>
           </p>
         </template>
       </section>
@@ -387,11 +485,11 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
         <fieldset class="leaderboardBoardFieldset">
           <legend class="textInputLabel">who sees it</legend>
           <label class="leaderboardBoardCheck">
-            <input type="radio" name="leaderboardBoardVisibility" :checked="!board.public" :disabled="busy" @change="patch({ public: false }, 'private: only members see it')" />
+            <input type="radio" v-model="visibility" name="leaderboardBoardVisibility" value="private" :disabled="busy" @change="patch({ public: false }, 'private: only members see it')" />
             private: only members see it
           </label>
           <label class="leaderboardBoardCheck">
-            <input type="radio" name="leaderboardBoardVisibility" :checked="board.public" :disabled="busy" @change="patch({ public: true }, 'public: anyone with the link sees it')" />
+            <input type="radio" v-model="visibility" name="leaderboardBoardVisibility" value="public" :disabled="busy" @change="patch({ public: true }, 'public: anyone with the link sees it')" />
             public: anyone with the link sees it
           </label>
         </fieldset>
@@ -399,11 +497,11 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
         <fieldset v-if="board.public" class="leaderboardBoardFieldset">
           <legend class="textInputLabel">who can join</legend>
           <label class="leaderboardBoardCheck">
-            <input type="radio" name="leaderboardBoardJoin" :checked="!board.openJoin" :disabled="busy" @change="patch({ openJoin: false }, 'invite only: joining takes the invite link')" />
+            <input type="radio" v-model="joining" name="leaderboardBoardJoin" value="invite" :disabled="busy" @change="patch({ openJoin: false }, 'invite only: joining takes the invite link')" />
             invite only: joining takes the invite link
           </label>
           <label class="leaderboardBoardCheck">
-            <input type="radio" name="leaderboardBoardJoin" :checked="board.openJoin" :disabled="busy" @change="patch({ openJoin: true }, 'open: anyone who sees it can join')" />
+            <input type="radio" v-model="joining" name="leaderboardBoardJoin" value="open" :disabled="busy" @change="patch({ openJoin: true }, 'open: anyone who sees it can join')" />
             open: anyone who sees it can join
           </label>
         </fieldset>
@@ -412,7 +510,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
           <label class="textInputLabel" for="leaderboardBoardDeadline">counts until (optional, in your time zone: {{ timeZone }})</label>
           <div class="leaderboardBoardActions">
             <input id="leaderboardBoardDeadline" v-model="deadlineInput" class="textInput" type="datetime-local" @input="confirming = ''" />
-            <button class="button button-secondary" type="submit" :disabled="busy">save deadline</button>
+            <button class="button button-secondary" type="submit" :disabled="busy" data-opens="deadline">save deadline</button>
             <button
               v-if="board.countsUntil"
               class="button button-text"
@@ -427,16 +525,16 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
             </button>
           </div>
           <p class="leaderboardBoardQuiet">Only fixes up to the deadline count here. Without one, every fix counts, whenever it's made.</p>
-          <div v-if="confirming === 'deadline' && newDeadline" class="leaderboardBoardConfirm">
+          <div v-if="confirming === 'deadline' && newDeadline" class="leaderboardBoardConfirm" data-confirm="deadline">
             <p>Fixes after {{ formatDeadline(newDeadline) }} will stop counting on this leaderboard.</p>
             <div class="leaderboardBoardActions">
               <button class="button button-primary" type="button" :disabled="busy" @click="saveDeadline(true)">save anyway</button>
-              <button class="button button-secondary" type="button" @click="confirming = ''">cancel</button>
+              <button class="button button-secondary" type="button" @click="cancel('deadline')">cancel</button>
             </div>
           </div>
         </form>
 
-        <p v-if="message.where === 'settings'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+        <p v-if="message.where === 'settings'" class="leaderboardBoardMessage" data-message="settings" tabindex="-1">{{ message.text }}</p>
 
         <div class="leaderboardBoardForm">
           <h3 class="textInputLabel">removed</h3>
@@ -447,34 +545,34 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
             </li>
           </ul>
           <p v-else class="leaderboardBoardQuiet">Nobody. Whoever you remove can't join again until you let them back in here.</p>
-          <p v-if="message.where === 'removed'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+          <p v-if="message.where === 'removed'" class="leaderboardBoardMessage" data-message="removed" tabindex="-1">{{ message.text }}</p>
         </div>
 
-        <div v-if="confirming === 'delete'" class="leaderboardBoardConfirm">
+        <div v-if="confirming === 'delete'" class="leaderboardBoardConfirm" data-confirm="delete">
           <p>Delete {{ board.name }} for everyone? This can't be undone. Everyone's progress stays, on their card and on other leaderboards.</p>
           <div class="leaderboardBoardActions">
             <button class="button button-primary" type="button" :disabled="busy" @click="deleteBoard">delete it</button>
-            <button class="button button-secondary" type="button" @click="confirming = ''">cancel</button>
+            <button class="button button-secondary" type="button" @click="cancel('delete')">cancel</button>
           </div>
         </div>
         <p v-else>
-          <button class="button button-text" type="button" @click="confirming = 'delete'">delete this leaderboard</button>
+          <button class="button button-text" type="button" data-opens="delete" @click="ask('delete')">delete this leaderboard</button>
         </p>
       </section>
 
       <section v-else-if="board.you.member && me" class="leaderboardBoardSection leaderboardBoardText" aria-labelledby="leaderboardBoardLeave">
         <h2 id="leaderboardBoardLeave">leave</h2>
-        <div v-if="confirming === 'leave'" class="leaderboardBoardConfirm">
+        <div v-if="confirming === 'leave'" class="leaderboardBoardConfirm" data-confirm="leave">
           <p>Leave {{ board.name }}? You can rejoin with the invite link.</p>
           <div class="leaderboardBoardActions">
             <button class="button button-primary" type="button" :disabled="busy" @click="leave(me)">leave</button>
-            <button class="button button-secondary" type="button" @click="confirming = ''">cancel</button>
+            <button class="button button-secondary" type="button" @click="cancel('leave')">cancel</button>
           </div>
         </div>
         <p v-else>
-          <button class="button button-text" type="button" @click="confirming = 'leave'">leave this leaderboard</button>
+          <button class="button button-text" type="button" data-opens="leave" @click="ask('leave')">leave this leaderboard</button>
         </p>
-        <p v-if="message.where === 'leave'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
+        <p v-if="message.where === 'leave'" class="leaderboardBoardMessage" data-message="leave" tabindex="-1">{{ message.text }}</p>
       </section>
     </template>
   </div>

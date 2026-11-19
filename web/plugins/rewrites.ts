@@ -6,10 +6,12 @@ import type { Plugin } from 'vite';
  * The page reads the ID or the code from the address itself.
  */
 export function rewritePath(path: string): string | null {
-  if (/^\/leaderboards\/[A-Za-z0-9_-]+\/?$/.test(path) && !/^\/leaderboards\/board\/?$/.test(path)) {
+  // Anything below them, like Netlify's splat: /leaderboards/a/b too, which the page answers
+  // with "no leaderboard here". The pages that exist are served as they are.
+  if (/^\/leaderboards\/.+/.test(path) && !/^\/leaderboards\/board\/?$/.test(path)) {
     return '/leaderboards/board/';
   }
-  if (/^\/join\/[A-Za-z0-9_-]+\/?$/.test(path)) {
+  if (/^\/join\/.+/.test(path)) {
     return '/join/';
   }
   return null;
