@@ -13,7 +13,9 @@ const loginOpensAt = doorOpensAt(1).toISOString();
 ---
 
 <header class="siteHeader">
-  <a class="siteHeaderBrand" href="/">
+  <!-- Named here too: on a narrow screen, her name hides to make room, and the mark alone has
+       no text. -->
+  <a class="siteHeaderBrand" href="/" aria-label="POLARIS-7 station console">
     <!-- Her header mark, the same drawing as the favicon: her neutral face with the heavy
          outline (the design's pola-mark has annoyed lids; we keep her neutral here, like on
          the landing page). The name next to it says who she is. -->
@@ -28,6 +30,15 @@ const loginOpensAt = doorOpensAt(1).toISOString();
         {link.label}
       </a>
     ))}
+    <!-- Only for who is logged in: shown by the script below. -->
+    <a
+      class="siteHeaderLink siteHeaderLeaderboards"
+      href="/leaderboards"
+      aria-current={currentPath === '/leaderboards' ? 'page' : undefined}
+      hidden
+    >
+      leaderboards
+    </a>
     <!-- Filled in by the script below; without it, nobody is logged in as far as the page knows. -->
     <a class="siteHeaderLink siteHeaderLogIn" href="/api/auth/github/login" data-opens-at={loginOpensAt} hidden>
       log in
@@ -43,6 +54,7 @@ const loginOpensAt = doorOpensAt(1).toISOString();
   // Asked after the page is shown, so the page itself stays the same for everyone.
   const logIn = document.querySelector<HTMLAnchorElement>('.siteHeaderLogIn');
   const account = document.querySelector<HTMLAnchorElement>('.siteHeaderAccount');
+  const leaderboards = document.querySelector<HTMLAnchorElement>('.siteHeaderLeaderboards');
   if (logIn && account) {
     const opensAt = new Date(logIn.dataset.opensAt ?? '');
     fetchMe().then((me) => {
@@ -56,6 +68,7 @@ const loginOpensAt = doorOpensAt(1).toISOString();
           account.setAttribute('aria-current', 'page');
         }
         account.hidden = false;
+        if (leaderboards) leaderboards.hidden = false;
       } else if (shown.state === 'loggedOut') {
         logIn.href = loginHref(window.location.pathname);
         logIn.hidden = false;

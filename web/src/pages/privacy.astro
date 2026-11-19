@@ -17,7 +17,7 @@ const LIST_DELETED_BY = 'January 31, 2027';
   pola={{ mood: 'neutral', message: 'I keep less about you than about the crew.' }}
 >
   <TextPage command="$ cat privacy.txt" title="privacy">
-    <p>Last updated: November 13, 2026</p>
+    <p>Last updated: November 19, 2026</p>
     <p>
       This page explains what aocn.dev does with your data and what rights you have under the GDPR. The short version:{' '}
       <strong>your email address is stored only if you ask for door emails, and your account and results only if you sign in with GitHub. Your profile is private unless you make it public. There is no tracking: visits are counted, but not who made them.</strong>
@@ -52,10 +52,19 @@ const LIST_DELETED_BY = 'January 31, 2027';
         <strong>What is stored:</strong> your GitHub user ID and login, the address of your GitHub avatar, when you
         first and last signed in, and whether your profile is public. For every <code>aocn verify</code>: the door,
         whether it passed, what each check got (for example the status code of a request in your cluster), and when.
+        For every hint you open with <code>aocn hint</code>: the door, which hint, and when, since hints cost points.
       </li>
       <li>
         <strong>Why:</strong> to save your progress and show it on your profile card. Your card is private unless you
         make it public; then anyone with the link sees your login and the doors you solved.
+      </li>
+      <li>
+        <strong>Leaderboards:</strong> if you create or join one, we store that you're a member, and since when. Everyone
+        who can see a leaderboard sees your GitHub login, points, failed verifies and which doors you fixed:
+        its members, or anyone with its link once its owner makes it public. People outside it see your login only if your
+        profile card is public, and "private" otherwise. Leaving it removes you, and deleting it
+        removes it for everyone. Your profile card stays private all the same; if it's public, it lists your
+        leaderboards to the people who may see them.
       </li>
       <li>
         <strong>Legal basis:</strong> providing the account you asked for (Art. 6(1)(b) GDPR). The command line tool

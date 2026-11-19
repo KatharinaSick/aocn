@@ -197,8 +197,8 @@ func TestMatchResultsKeepsTheChecksOrderAndShortensAnswers(t *testing.T) {
 		{ID: checks[1].ID, Passed: true, Got: long},
 		{ID: checks[0].ID, Passed: true},
 	}
-	ordered, passed, err := matchResults(checks, sent)
-	if err != nil || !passed {
+	ordered, passed, notReady, err := matchResults(checks, sent)
+	if err != nil || !passed || notReady {
 		t.Fatalf("passed %v, err %v", passed, err)
 	}
 	if ordered[0].ID != checks[0].ID || ordered[1].ID != checks[1].ID {
@@ -227,5 +227,23 @@ func TestVerifyNeedsTheAccount(t *testing.T) {
 	}
 	if len(h.results.recorded) != 0 {
 		t.Errorf("recorded %d runs", len(h.results.recorded))
+	}
+}
+
+// One player verifies at most verifyLimit times a minute; anyone else still can.
+func TestVerifyIsLimitedPerPlayer(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(time.Hour), uploaded)
+	sent := resultsFor(door1Checks(t), false)
+	for i := range verifyLimit {
+		if rec := verifyAs(h, "1", playerToken, sent); rec.Code != http.StatusOK {
+			t.Fatalf("verify %d: status %d, %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	rec := verifyAs(h, "1", playerToken, sent)
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "aocn verify again") {
+		t.Errorf("one too many: status %d, %s", rec.Code, rec.Body.String())
+	}
+	if rec := verifyAs(h, "1", previewerToken, sent); rec.Code != http.StatusOK {
+		t.Errorf("someone else: status %d", rec.Code)
 	}
 }

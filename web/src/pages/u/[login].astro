@@ -128,6 +128,37 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
             </ol>
           </section>
 
+          {/* The leaderboards they're in that you may see: the API leaves out private ones you're
+               not in. Only the rank: the board has the numbers (see the API's profiles.go). */}
+          {(profile.leaderboards.length > 0 || profile.own) && (
+            <section class="profileDoorsSection" aria-labelledby="profileBoardsTitle">
+              <h2 class="profileDoorsTitle" id="profileBoardsTitle">
+                <span aria-hidden="true">$ ls leaderboards/</span>
+                <span class="srOnly">leaderboards</span>
+              </h2>
+              {profile.leaderboards.length > 0 ? (
+                <ul class="profileBoards">
+                  {profile.leaderboards.map((board) => (
+                    <li class="profileBoard">
+                      <a href={`/leaderboards/${board.id}`}>{board.name}</a>
+                      <span class="profileBoardRank">
+                        {`#${board.rank} of ${board.members}`}
+                        {board.final && ' · final'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p class="profileVisibility">Not on any leaderboard yet.</p>
+              )}
+              {profile.own && (
+                <p class="profileVisibility">
+                  <a href="/leaderboards">your leaderboards</a>: make one for your team, or see the ones you're in.
+                </p>
+              )}
+            </section>
+          )}
+
           {/* Only on your own card: who may see it, the image of it, the link once it's
                public (the link previews as the image), and logging out. */}
           {profile.own && (
@@ -365,6 +396,37 @@ const doorNumber = (door: number) => String(door).padStart(2, '0');
     border-style: dashed;
     color: var(--color-muted);
     font-weight: var(--font-weight-regular);
+  }
+
+  /* Two classes, so this wins over TextPage's lists. */
+  .profile .profileBoards {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .profileBoard {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-screen);
+    background: var(--color-panel);
+  }
+
+  .profileBoard a {
+    color: var(--color-text);
+    overflow-wrap: anywhere;
+  }
+
+  .profileBoardRank {
+    color: var(--color-text-soft);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
   }
 
   .profileOwn {

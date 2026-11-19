@@ -12,10 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/httprate"
 	"github.com/katharinasick/aocn/api/internal/app"
 	"github.com/katharinasick/aocn/api/internal/doors"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/scoring"
 	"github.com/katharinasick/aocn/api/internal/session"
 	"github.com/katharinasick/aocn/api/internal/users"
 )
@@ -53,9 +55,12 @@ type Accounts interface {
 	Get(ctx context.Context, githubUserID int64) (users.User, error)
 }
 
-// ResultStore keeps what aocn verify sends.
+// ResultStore keeps what aocn verify sends and which hints a player opened, and hands back
+// everything recorded for working out points. *results.Store asks the database.
 type ResultStore interface {
 	Record(ctx context.Context, user users.User, result results.Result) error
+	OpenHint(ctx context.Context, githubUserID int64, door, index int, at time.Time) (bool, error)
+	Progress(ctx context.Context, githubUserIDs []int64) (map[int64]scoring.Progress, error)
 }
 
 func (d Doors) now() time.Time {
@@ -80,9 +85,34 @@ type pageResponse struct {
 	doors.Page
 }
 
+// hintsResponse is what a player has of a door's hints: the ones they opened, and what the
+// next one costs.
 type hintsResponse struct {
-	Door  int      `json:"door"`
+	Door int `json:"door"`
+	// Total is how many hints the door has.
+	Total int `json:"total"`
+	// Hints are the ones this player opened, in order. Showing them again is free.
 	Hints []string `json:"hints"`
+	// Next is the hint to open next, none once all are open.
+	Next *nextHint `json:"next,omitempty"`
+	// Fixed is whether they fixed the door: hints cost nothing from then on.
+	Fixed bool `json:"fixed"`
+	// Preview means the door isn't open: hints opened now cost nothing.
+	Preview bool `json:"preview,omitempty"`
+}
+
+type nextHint struct {
+	// Hint is its number, from 1.
+	Hint int `json:"hint"`
+	// Cost is what opening it costs now, in points.
+	Cost int `json:"cost"`
+}
+
+// openedHintResponse answers opening a hint: the player's hints, and what this one cost.
+type openedHintResponse struct {
+	hintsResponse
+	// Cost is what opening it cost: nothing if it was open already.
+	Cost int `json:"cost"`
 }
 
 type checksResponse struct {
@@ -255,21 +285,172 @@ func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 	})
 }
 
-// handleDoorHints hands out an open door's hints, for aocn hint. They're not in the bundle,
-// so a player can't read them in the door's folder without asking for them.
+// handleDoorHints answers with the hints the signed-in player opened for an open door, for
+// aocn hint, and what the next one costs. Never the ones they didn't open: each costs points,
+// so only POST /doors/{door}/hints/next hands out a new one. Hints aren't in the bundle, so a
+// player can't read them in the door's folder either.
 func handleDoorHints(log app.Logger, d Doors) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a, ok := d.gate(log, w, r, false, false)
+		a, ok := d.gate(log, w, r, true, false)
 		if !ok {
 			return
 		}
-		hints, err := d.Hints.Get(r.Context(), a.door, d.now())
+		all, err := d.Hints.Get(r.Context(), a.door, d.now())
 		if err != nil {
 			writeMissingDoor(log, w, a.door, "hints", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, hintsResponse{Door: a.door, Hints: hints})
+		state, err := d.hintState(r.Context(), a, all)
+		if err != nil {
+			log.Error("Looking up a player's hints failed", "door", a.door, "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "your hints can't be looked up right now, try again in a few minutes")
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
 	})
+}
+
+type openHintRequest struct {
+	// Hint is the number of the hint to open, from 1: the one aocn hint said the price of,
+	// so a second aocn hint at the same time can't open one more than the player agreed to.
+	Hint int `json:"hint"`
+	// Cost is what aocn hint said it costs, and must be there: opening it refuses another
+	// price, so a door that opened or got fixed while the player was asked never costs what
+	// they didn't agree to. A pointer, so a body without it is refused instead of read as 0.
+	Cost *int `json:"cost"`
+}
+
+// handleOpenHint opens a hint of an open door for the signed-in player: it records it, which
+// is what makes it cost points, and answers with it. Hints open in order. Opening one that's
+// open already changes nothing and costs nothing.
+func handleOpenHint(log app.Logger, d Doors) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		a, ok := d.gate(log, w, r, true, false)
+		if !ok {
+			return
+		}
+		var req openHintRequest
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBytes))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil || req.Cost == nil {
+			writeJSONError(w, http.StatusBadRequest, `send {"hint": N, "cost": C}: the number of the hint to open, and what it costs`)
+			return
+		}
+		ctx := r.Context()
+		all, err := d.Hints.Get(ctx, a.door, d.now())
+		if err != nil {
+			writeMissingDoor(log, w, a.door, "hints", err)
+			return
+		}
+		if req.Hint < 1 || req.Hint > len(all) {
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("door %d has hints 1 to %d", a.door, len(all)))
+			return
+		}
+		before, err := d.hintState(ctx, a, all)
+		if err != nil {
+			log.Error("Looking up a player's hints failed", "door", a.door, "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "the hint can't be opened right now, try again in a few minutes")
+			return
+		}
+		if req.Hint <= len(before.Hints) {
+			writeJSON(w, http.StatusOK, openedHintResponse{hintsResponse: before})
+			return
+		}
+		if req.Hint > len(before.Hints)+1 {
+			writeJSON(w, http.StatusConflict, struct {
+				Error string `json:"error"`
+				hintsResponse
+			}{fmt.Sprintf("hints open in order: open hint %d first", len(before.Hints)+1), before})
+			return
+		}
+		if *req.Cost != before.Next.Cost {
+			writeJSON(w, http.StatusConflict, struct {
+				Error string `json:"error"`
+				hintsResponse
+			}{fmt.Sprintf("hint %d costs %d points now, not %d. Run aocn hint again", req.Hint, before.Next.Cost, *req.Cost), before})
+			return
+		}
+
+		// The user has to exist for their hint to be kept. They do once they signed in.
+		if _, err := d.Accounts.Get(ctx, a.callerID); errors.Is(err, users.ErrNotFound) {
+			writeJSONError(w, http.StatusUnauthorized, "sign in again, with: aocn login")
+			return
+		} else if err != nil {
+			log.Error("Looking up who opened a hint failed", "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "the hint can't be opened right now, try again in a few minutes")
+			return
+		}
+		at := d.now()
+		inserted, err := d.Results.OpenHint(ctx, a.callerID, a.door, req.Hint-1, at)
+		if errors.Is(err, results.ErrHintOutOfOrder) {
+			// Another aocn hint got there first.
+			writeJSONError(w, http.StatusConflict, "your hints changed in the meantime. Run aocn hint again")
+			return
+		}
+		if err != nil {
+			log.Error("Saving an opened hint failed", "door", a.door, "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "the hint can't be opened right now, try again in a few minutes")
+			return
+		}
+		progress, err := d.Results.Progress(ctx, []int64{a.callerID})
+		if err != nil {
+			log.Error("Looking up a player's hints failed", "door", a.door, "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "the hint was opened, but can't be shown right now. Run aocn hint again in a few minutes")
+			return
+		}
+		p := progress[a.callerID]
+		after := d.hintStateOf(a, all, p)
+		// What it cost going by what's recorded, as Score will count it: a pass that came in
+		// while this ran makes it free. Nothing if another aocn hint opened it a moment ago,
+		// which said what it cost.
+		cost := 0
+		if inserted {
+			cost = scoring.HintCostAt(a.opensAt, at, p.Runs[a.door], req.Hint-1)
+			log.Info("Hint opened", "door", a.door, "hint", req.Hint, "github_user_id", a.callerID, "cost", cost)
+		}
+		writeJSON(w, http.StatusOK, openedHintResponse{hintsResponse: after, Cost: cost})
+	})
+}
+
+// hintState is what the caller has of the door's hints, all of them: the ones they opened,
+// and the next one's price.
+func (d Doors) hintState(ctx context.Context, a access, all []string) (hintsResponse, error) {
+	progress, err := d.Results.Progress(ctx, []int64{a.callerID})
+	if err != nil {
+		return hintsResponse{}, err
+	}
+	return d.hintStateOf(a, all, progress[a.callerID]), nil
+}
+
+// hintStateOf is hintState from the caller's progress.
+func (d Doors) hintStateOf(a access, all []string, p scoring.Progress) hintsResponse {
+	opened := min(len(p.Hints[a.door]), len(all))
+	fixed := scoring.Score(a.opensAt, time.Time{}, p.Runs[a.door], p.Hints[a.door]).Fixed
+	state := hintsResponse{
+		Door:    a.door,
+		Total:   len(all),
+		Hints:   all[:opened],
+		Fixed:   fixed,
+		Preview: a.preview,
+	}
+	if opened < len(all) {
+		state.Next = &nextHint{Hint: opened + 1, Cost: scoring.NextHintCost(a.opensAt, d.now(), fixed, opened)}
+	}
+	return state
+}
+
+// verifyLimit is how often one player may verify, per verifyWindow, counted per instance like
+// every other limit. A person fixing a door verifies a few times a minute at most; an agent in
+// a loop doesn't get to fill verify_results.
+const (
+	verifyLimit  = 20
+	verifyWindow = time.Minute
+)
+
+// tooManyVerifies answers a player past verifyLimit.
+func tooManyVerifies(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Retry-After", "60")
+	writeJSONError(w, http.StatusTooManyRequests, "that's a lot of verifies in a minute. Wait a moment, then run aocn verify again")
 }
 
 // maxVerifyBytes bounds a verify request: a door has a few dozen checks with a short answer
@@ -284,6 +465,17 @@ type verifyResponse struct {
 	Door   int    `json:"door"`
 	Passed bool   `json:"passed"`
 	Login  string `json:"login"`
+	// Score is what the door is worth to the player, once they fixed it.
+	Score *doorScore `json:"score,omitempty"`
+}
+
+// doorScore is what a fixed door is worth: set by the first pass, whatever came after.
+type doorScore struct {
+	Points         int `json:"points"`
+	Hints          int `json:"hints"`
+	FailedVerifies int `json:"failedVerifies"`
+	// Preview means the door isn't open yet: this is what it will be worth once it is.
+	Preview bool `json:"preview,omitempty"`
 }
 
 // handleVerify keeps the result of an aocn verify under the caller's GitHub ID. It needs a
@@ -293,9 +485,14 @@ type verifyResponse struct {
 // trust which checks ran: the results must be exactly the door's checks, by ID, and it
 // decides itself whether the door passed.
 func handleVerify(log app.Logger, d Doors) http.Handler {
+	limit := httprate.NewRateLimiter(verifyLimit, verifyWindow, httprate.WithLimitHandler(tooManyVerifies))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		a, ok := d.gate(log, w, r, true, false)
 		if !ok {
+			return
+		}
+		// Per player, not per IP: a whole workshop verifies from one address.
+		if limit.RespondOnLimit(w, r, strconv.FormatInt(a.callerID, 10)) {
 			return
 		}
 
@@ -312,7 +509,7 @@ func handleVerify(log app.Logger, d Doors) http.Handler {
 			writeMissingDoor(log, w, a.door, "checks", err)
 			return
 		}
-		ordered, passed, err := matchResults(checks, req.Results)
+		ordered, passed, notReady, err := matchResults(checks, req.Results)
 		if err != nil {
 			// A new upload while the checks ran, or results that weren't made by running them.
 			writeJSONError(w, http.StatusConflict, "the door's checks changed. Run aocn verify again")
@@ -330,13 +527,22 @@ func handleVerify(log app.Logger, d Doors) http.Handler {
 			writeJSONError(w, http.StatusServiceUnavailable, "your result couldn't be saved right now, try again in a few minutes")
 			return
 		}
-		result := results.Result{Door: a.door, Passed: passed, Checks: ordered, At: d.now()}
+		result := results.Result{Door: a.door, Passed: passed, NotReady: notReady, Checks: ordered, At: d.now()}
 		if err := d.Results.Record(r.Context(), user, result); err != nil {
 			log.Error("Saving a result failed", "door", a.door, "error", err)
 			writeJSONError(w, http.StatusServiceUnavailable, "your result couldn't be saved, try again in a few minutes")
 			return
 		}
-		writeJSON(w, http.StatusOK, verifyResponse{Door: a.door, Passed: passed, Login: user.Login})
+		response := verifyResponse{Door: a.door, Passed: passed, Login: user.Login}
+		if passed {
+			// The run is saved either way; without the database, the answer just has no points.
+			if score, err := d.doorScore(r.Context(), a); err != nil {
+				log.Error("Working out a door's points failed", "door", a.door, "error", err)
+			} else {
+				response.Score = score
+			}
+		}
+		writeJSON(w, http.StatusOK, response)
 	})
 }
 
@@ -346,34 +552,55 @@ const maxGotRunes = 300
 // errResultsMismatch means the results aren't exactly the door's checks.
 var errResultsMismatch = errors.New("the results don't match the door's checks")
 
+// doorScore is what the door is worth to the caller now that they passed it.
+func (d Doors) doorScore(ctx context.Context, a access) (*doorScore, error) {
+	progress, err := d.Results.Progress(ctx, []int64{a.callerID})
+	if err != nil {
+		return nil, err
+	}
+	p := progress[a.callerID]
+	door := scoring.Score(a.opensAt, time.Time{}, p.Runs[a.door], p.Hints[a.door])
+	if !door.Fixed {
+		// Only if the run that just passed isn't among the runs: the database is behind.
+		return nil, errors.New("a door that just passed isn't fixed")
+	}
+	return &doorScore{Points: door.Points, Hints: door.Hints, FailedVerifies: door.FailedVerifies, Preview: a.preview}, nil
+}
+
 // matchResults checks that sent has exactly one result for each of checks, by ID, and
-// returns them in the checks' order. The door passed if every check did.
-func matchResults(checks []doors.Check, sent []results.CheckResult) ([]results.CheckResult, bool, error) {
+// returns them in the checks' order. The door passed if every check did. notReady says the
+// run failed at a ready check, with every check before it passed: the workloads weren't up
+// yet, so it isn't a failed verify.
+func matchResults(checks []doors.Check, sent []results.CheckResult) (ordered []results.CheckResult, passed, notReady bool, err error) {
 	if len(sent) != len(checks) {
-		return nil, false, errResultsMismatch
+		return nil, false, false, errResultsMismatch
 	}
 	byID := make(map[string]results.CheckResult, len(sent))
 	for _, r := range sent {
 		if _, dup := byID[r.ID]; dup {
-			return nil, false, errResultsMismatch
+			return nil, false, false, errResultsMismatch
 		}
 		byID[r.ID] = r
 	}
 
-	ordered := make([]results.CheckResult, 0, len(checks))
-	passed := len(checks) > 0
+	ordered = make([]results.CheckResult, 0, len(checks))
+	passed = len(checks) > 0
 	for _, c := range checks {
 		r, ok := byID[c.ID]
 		if !ok {
-			return nil, false, errResultsMismatch
+			return nil, false, false, errResultsMismatch
 		}
 		if got := []rune(r.Got); len(got) > maxGotRunes {
 			r.Got = string(got[:maxGotRunes])
 		}
+		if passed && !r.Passed && c.Ready != nil {
+			// The first check that failed is a ready check.
+			notReady = true
+		}
 		passed = passed && r.Passed
 		ordered = append(ordered, r)
 	}
-	return ordered, passed, nil
+	return ordered, passed, notReady, nil
 }
 
 // writeMissingDoor answers for an open door whose files can't be read. That's our mistake,

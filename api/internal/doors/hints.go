@@ -12,8 +12,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ParseHints reads a hints.yaml: a list of hints, in order from a nudge to nearly the
-// solution. Each is plain text, which aocn hint shows as it is.
+// HintsPerDoor is how many hints every door has. A hint's cost in points goes by its
+// position (package scoring), so every door needs exactly this many.
+const HintsPerDoor = 3
+
+// ParseHints reads a hints.yaml: a list of exactly HintsPerDoor hints, in order from a nudge
+// to nearly the solution. Each is plain text, which aocn hint shows as it is.
 func ParseHints(data []byte) ([]string, error) {
 	var hints []string
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
@@ -29,8 +33,8 @@ func ParseHints(data []byte) ([]string, error) {
 	} else if !errors.Is(err, io.EOF) {
 		return nil, err
 	}
-	if len(hints) == 0 {
-		return nil, errors.New("hints.yaml has no hints")
+	if len(hints) != HintsPerDoor {
+		return nil, fmt.Errorf("hints.yaml has %d hints, every door needs exactly %d", len(hints), HintsPerDoor)
 	}
 	for i, h := range hints {
 		if strings.TrimSpace(h) == "" {

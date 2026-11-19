@@ -1,0 +1,78 @@
+/* The site's controls: Button.astro and TextInput.astro, and the same classes in Vue islands,
+   which can't use Astro components. One place for their look, so the two never drift.
+   Imported by both components and by every island that draws a control. */
+
+/* Button.astro */
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--size-control);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-none);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button-primary {
+  border: none;
+  background: var(--color-aurora);
+  color: var(--color-bg);
+  font-weight: var(--font-weight-bold);
+}
+
+.button-secondary {
+  border: 1px solid var(--color-dim);
+  background: var(--color-panel-glass);
+  color: var(--color-text);
+}
+
+.button-secondary:hover {
+  border-color: var(--color-text-soft);
+}
+
+/* Keeps the control height as its click area; only the look is reduced to text. */
+/* Green and underlined, like every link in running text on the site. */
+.button-text {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-aurora);
+  text-decoration: underline;
+}
+
+/* TextInput.astro */
+.textInputLabel {
+  color: var(--color-muted);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.textInput {
+  height: var(--size-control);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-dim);
+  border-radius: var(--radius-none);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--font-size-input);
+}
+
+/* The bottom line alone still marks the field: dim is 5:1 against the page. */
+.textInputUnderline {
+  padding: 0;
+  border-width: 0 0 1px;
+  background: transparent;
+}
+
+.textInput::placeholder {
+  color: var(--color-dim);
+  opacity: 1;
+}
+
+.textInput:focus-visible {
+  outline-color: var(--color-aurora);
+}

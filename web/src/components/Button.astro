@@ -13,7 +13,11 @@
 // calendar file). With download as well, the browser saves the file under that name (the
 // share image on your profile card). With newTab as well, it opens in a new tab (the door's
 // Codespace, so the door page stays open next to it).
+//
+// Its look is in styles/controls.css, so a Vue island, which can't use Astro components, draws
+// the same button with class="button button-primary" (or -secondary, -text).
 import type { HTMLAttributes } from 'astro/types';
+import '../styles/controls.css';
 
 interface Props extends HTMLAttributes<'button'> {
   variant?: 'primary' | 'secondary' | 'text';
@@ -44,46 +48,3 @@ const classes = ['button', `button-${variant}`, className];
     <slot />
   </button>
 )}
-
-<style>
-  .button {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    height: var(--size-control);
-    padding: 0 var(--space-4);
-    border-radius: var(--radius-none);
-    font-size: var(--font-size-body);
-    line-height: var(--line-height-body);
-    white-space: nowrap;
-    text-decoration: none;
-    cursor: pointer;
-  }
-
-  .button-primary {
-    border: none;
-    background: var(--color-aurora);
-    color: var(--color-bg);
-    font-weight: var(--font-weight-bold);
-  }
-
-  .button-secondary {
-    border: 1px solid var(--color-dim);
-    background: var(--color-panel-glass);
-    color: var(--color-text);
-  }
-
-  .button-secondary:hover {
-    border-color: var(--color-text-soft);
-  }
-
-  /* Keeps the control height as its click area; only the look is reduced to text. */
-  /* Green and underlined, like every link in running text on the site. */
-  .button-text {
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--color-aurora);
-    text-decoration: underline;
-  }
-</style>

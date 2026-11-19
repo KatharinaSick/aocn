@@ -134,6 +134,15 @@ func serveAPI(t *testing.T) *fakeAPI {
 			w.Write([]byte(`{"door":2,"checks":[{"id":"a","ready":["apps"]},{"id":"b","http":{"method":"GET","to":"apps/api","from":"apps/new-pod","expect":"2xx"}},{"id":"c","job":"apps/cronjob/x"}]}`))
 		case "POST /doors/2/verify":
 			w.Write([]byte(`{"door":2,"passed":false,"login":"octo"}`))
+		case "POST /doors/3/verify":
+			w.Write([]byte(`{"door":3,"passed":true,"login":"octo","score":{"points":95,"hints":1,"failedVerifies":2}}`))
+		case "GET /doors/2/hints":
+			w.Write([]byte(`{"door":2,"total":3,"hints":["first"],"next":{"hint":2,"cost":15},"fixed":false}`))
+		case "POST /doors/2/hints/next":
+			w.Write([]byte(`{"door":2,"total":3,"hints":["first","second"],"next":{"hint":3,"cost":30},"fixed":false,"cost":15}`))
+		case "POST /doors/3/hints/next":
+			// An answer without the hint asked for.
+			w.Write([]byte(`{"door":3,"total":3,"hints":[],"next":{"hint":1,"cost":5},"cost":0}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -258,5 +267,44 @@ func TestSignIn(t *testing.T) {
 	}
 	if _, err := SignIn(context.Background(), "gho_bad", true); err == nil || !strings.Contains(err.Error(), "Run aocn login again") {
 		t.Errorf("bad token: %v", err)
+	}
+}
+
+func TestSendResultsWithPoints(t *testing.T) {
+	serveAPI(t)
+	saved, err := SendResults(context.Background(), 3, []check.Outcome{{ID: "a", Passed: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.Passed || saved.Score == nil || *saved.Score != (Score{Points: 95, Hints: 1, FailedVerifies: 2}) {
+		t.Errorf("got %+v, score %+v", saved, saved.Score)
+	}
+}
+
+func TestHints(t *testing.T) {
+	serveAPI(t)
+	state, err := Hints(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Total != 3 || len(state.Hints) != 1 || state.Next == nil || *state.Next != (NextHint{Hint: 2, Cost: 15}) {
+		t.Errorf("got %+v", state)
+	}
+}
+
+func TestOpenHint(t *testing.T) {
+	f := serveAPI(t)
+	state, cost, err := OpenHint(context.Background(), 2, 2, 15)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cost != 15 || len(state.Hints) != 2 || state.Hints[1] != "second" || state.Next.Hint != 3 {
+		t.Errorf("got %+v, cost %d", state, cost)
+	}
+	if f.body != `{"hint":2,"cost":15}` {
+		t.Errorf("sent %s", f.body)
+	}
+	if _, _, err := OpenHint(context.Background(), 3, 1, 5); err == nil {
+		t.Error("an answer without the hint should be an error")
 	}
 }

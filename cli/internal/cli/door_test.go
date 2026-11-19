@@ -42,3 +42,40 @@ func TestOtherDoor(t *testing.T) {
 		t.Errorf("elsewhere: got %q, want the door's page and --reset", elsewhere)
 	}
 }
+
+func TestScoreLine(t *testing.T) {
+	tests := []struct {
+		score api.Score
+		want  string
+	}{
+		{api.Score{Points: 100}, "Door 3: 100 points."},
+		{api.Score{Points: 95, Hints: 1, FailedVerifies: 1}, "Door 3: 95 points (1 hint), 1 failed verify."},
+		{api.Score{Points: 80, Hints: 2, FailedVerifies: 3}, "Door 3: 80 points (2 hints), 3 failed verifies."},
+		{api.Score{Points: 100, FailedVerifies: 2}, "Door 3: 100 points, 2 failed verifies."},
+		{api.Score{Points: 100, Preview: true}, "Door 3: 100 points, once it opens."},
+	}
+	for _, tt := range tests {
+		if got := scoreLine(3, tt.score); got != tt.want {
+			t.Errorf("%+v: got %q, want %q", tt.score, got, tt.want)
+		}
+	}
+}
+
+func TestHintCostLine(t *testing.T) {
+	next := &api.NextHint{Hint: 3, Cost: 30}
+	tests := []struct {
+		cost  int
+		state api.HintState
+		want  string
+	}{
+		{15, api.HintState{Next: next}, "That cost 15 points. Stuck again? aocn hint opens the next one."},
+		{30, api.HintState{}, "That cost 30 points. That was the last hint."},
+		{0, api.HintState{Next: next, Fixed: true}, "Free: you fixed this door already. Stuck again? aocn hint opens the next one."},
+		{0, api.HintState{Preview: true}, "Free: the door isn't open yet. That was the last hint."},
+	}
+	for _, tt := range tests {
+		if got := hintCostLine(tt.cost, tt.state); got != tt.want {
+			t.Errorf("%d, %+v: got %q, want %q", tt.cost, tt.state, got, tt.want)
+		}
+	}
+}

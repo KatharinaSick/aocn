@@ -17,6 +17,7 @@ import (
 	"github.com/katharinasick/aocn/api/internal/doors"
 	"github.com/katharinasick/aocn/api/internal/email"
 	"github.com/katharinasick/aocn/api/internal/github"
+	"github.com/katharinasick/aocn/api/internal/leaderboards"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
 	"github.com/katharinasick/aocn/api/internal/subscribe"
@@ -97,14 +98,22 @@ func main() {
 	// cookie: both signed with this key.
 	doorsAPI.SessionKey = authAPI.SessionKey
 	// The profile endpoints check the website's session cookie, to tell a card's owner.
-	profiles := api.Profiles{Schedule: sched, Users: userStore, Results: resultStore, SessionKey: authAPI.SessionKey}
+	// So do the leaderboard endpoints, to tell members and owners.
+	boards := api.Leaderboards{
+		Schedule:   sched,
+		Store:      leaderboards.NewStore(pool),
+		Results:    resultStore,
+		Accounts:   userStore,
+		SessionKey: authAPI.SessionKey,
+	}
+	profiles := api.Profiles{Schedule: sched, Users: userStore, Results: resultStore, Boards: boards, SessionKey: authAPI.SessionKey}
 
 	// WriteTimeout is also the longest a bundle download may take: past it the connection
 	// drops and aocn open reports a broken download. Fine while bundles are small; bigger
 	// bundles or slower players mean raising it, or handing out signed bucket URLs instead.
 	httpServer := &http.Server{
 		Addr:         net.JoinHostPort("", cfg.Server.Port),
-		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI, authAPI, profiles),
+		Handler:      api.NewHandler(log, subscriptions(log, cfg, subscribe.NewStore(pool)), doorsAPI, authAPI, profiles, boards),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,

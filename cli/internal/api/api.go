@@ -174,27 +174,90 @@ func Checks(ctx context.Context, door int) ([]check.Check, error) {
 	return body.Checks, nil
 }
 
-// Hints returns the door's hints, in order. They aren't in the bundle, so the door's folder
-// doesn't give them away.
-func Hints(ctx context.Context, door int) ([]string, error) {
+// HintState is what the player has of a door's hints: the ones they opened, and what the
+// next one costs. Only the API knows: hints cost points, so it keeps which ones each player
+// opened, whichever Codespace they asked from.
+type HintState struct {
+	Door int `json:"door"`
+	// Total is how many hints the door has.
+	Total int `json:"total"`
+	// Hints are the ones the player opened, in order.
+	Hints []string `json:"hints"`
+	// Next is the hint to open next, nil once all are open.
+	Next *NextHint `json:"next"`
+	// Fixed means the player fixed the door: hints are free from then on.
+	Fixed bool `json:"fixed"`
+	// Preview means the door isn't open yet: hints are free for a previewer.
+	Preview bool `json:"preview"`
+}
+
+// NextHint is the next hint to open, and what it costs now.
+type NextHint struct {
+	// Hint is its number, from 1.
+	Hint int `json:"hint"`
+	Cost int `json:"cost"`
+}
+
+// Hints returns the hints the signed-in player opened for the door, and what the next one
+// costs. Nothing they haven't opened.
+func Hints(ctx context.Context, door int) (HintState, error) {
 	resp, err := do(ctx, http.MethodGet, fmt.Sprintf("/doors/%d/hints", door), nil)
 	if err != nil {
-		return nil, err
+		return HintState{}, err
 	}
 	defer resp.Body.Close()
-	var body struct {
-		Hints []string `json:"hints"`
+	var state HintState
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&state); err != nil {
+		return HintState{}, fmt.Errorf("reading door %d's hints: %w", door, err)
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		return nil, fmt.Errorf("reading door %d's hints: %w", door, err)
+	return state, nil
+}
+
+// OpenHint opens hint number (from 1) of the door for the signed-in player, which is what
+// makes it cost points, and returns their hints with it. Opening one again is free. cost is
+// what the player agreed to pay: the API refuses if it costs something else by now. It
+// returns what this opening cost.
+func OpenHint(ctx context.Context, door, number, cost int) (HintState, int, error) {
+	body, err := json.Marshal(struct {
+		Hint int `json:"hint"`
+		Cost int `json:"cost"`
+	}{number, cost})
+	if err != nil {
+		return HintState{}, 0, err
 	}
-	return body.Hints, nil
+	resp, err := do(ctx, http.MethodPost, fmt.Sprintf("/doors/%d/hints/next", door), bytes.NewReader(body))
+	if err != nil {
+		return HintState{}, 0, err
+	}
+	defer resp.Body.Close()
+	var opened struct {
+		HintState
+		Cost int `json:"cost"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&opened); err != nil {
+		return HintState{}, 0, fmt.Errorf("reading door %d's hint: %w", door, err)
+	}
+	if len(opened.Hints) < number {
+		return HintState{}, 0, fmt.Errorf("%s didn't answer with hint %d, try again in a few minutes", host(), number)
+	}
+	return opened.HintState, opened.Cost, nil
 }
 
 // Saved is what the API kept of a run.
 type Saved struct {
 	Passed bool   `json:"passed"`
 	Login  string `json:"login"`
+	// Score is what the door is worth, once it passed. Nil if the API couldn't work it out.
+	Score *Score `json:"score"`
+}
+
+// Score is what a fixed door is worth: set by the player's first pass.
+type Score struct {
+	Points         int `json:"points"`
+	Hints          int `json:"hints"`
+	FailedVerifies int `json:"failedVerifies"`
+	// Preview means the door isn't open yet: it's worth this once it is.
+	Preview bool `json:"preview"`
 }
 
 // SendResults saves a run under the signed-in player's GitHub account.

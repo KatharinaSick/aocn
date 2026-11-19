@@ -49,8 +49,7 @@ render() {
       "settings": {
         "files.exclude": {
           ".gitignore": true,
-          ".open.json": true,
-          ".hints-seen.json": true
+          ".open.json": true
         }
       }
     }

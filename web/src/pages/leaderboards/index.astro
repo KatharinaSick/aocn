@@ -1,0 +1,22 @@
+---
+// Your leaderboards, and making one. The list is loaded in the browser, so this page is the
+// same for everyone and can be prerendered (see lib/leaderboards.ts).
+import TextPage from '../../components/TextPage.astro';
+import LeaderboardList from '../../islands/LeaderboardList.vue';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="leaderboards"
+  description="Your leaderboards on Advent of Cloud Native: make one for your team or your friends, and share its invite link."
+  noindex
+  pola={{ mood: 'neutral', message: 'Competition among the crew. I will be keeping score anyway.' }}
+>
+  <TextPage command="$ ls leaderboards/" title="leaderboards">
+    <p>
+      There's no global leaderboard. Make one for your team, your meetup or your friends, and share its invite link.
+      Everyone on it sees each other's points and which doors they fixed. <a href="/how-it-works#man-points">How points work</a>
+    </p>
+    <LeaderboardList client:load />
+  </TextPage>
+</BaseLayout>

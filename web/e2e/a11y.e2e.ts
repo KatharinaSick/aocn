@@ -20,7 +20,18 @@ function findPages(dir: string): string[] {
 
 // On-demand pages aren't in dist/: they're rendered by `astro dev` from a fake API with a
 // made-up door (playwright.config.ts). List each kind of on-demand page here.
-const onDemandPages = ['http://localhost:4800/doors/1', 'http://localhost:4800/doors/3', 'http://localhost:4800/doors/5', 'http://localhost:4800/doors/7', 'http://localhost:4800/doors/9', 'http://localhost:4800/u/example', 'http://localhost:4800/u/mine'];
+const onDemandPages = ['http://localhost:4800/doors/1', 'http://localhost:4800/doors/3', 'http://localhost:4800/doors/5', 'http://localhost:4800/doors/7', 'http://localhost:4800/doors/9', 'http://localhost:4800/u/example', 'http://localhost:4800/u/mine',
+  // The leaderboard pages load in the browser; from the dev server, they get the fake API's.
+  'http://localhost:4800/leaderboards/', 'http://localhost:4800/leaderboards/Example000000000', 'http://localhost:4800/join/ExampleCode00000'];
+
+// Pages that load their content in the browser say so with data-state="loading" until it's
+// there, and the header asks who is logged in: the tests wait for both, so they check the
+// page as it ends up, and nothing moves while they measure.
+async function visit(page: Page, path: string) {
+  await page.goto(path);
+  await page.waitForLoadState('networkidle');
+  await page.locator('[data-state="loading"]').waitFor({ state: 'detached' });
+}
 
 const pages = [...findPages(distDir), ...onDemandPages];
 
@@ -110,6 +121,10 @@ async function skyContrastFailures(page: Page): Promise<SkyContrastFailure[]> {
       range.selectNodeContents(node);
       for (const rect of range.getClientRects()) {
         if (!rect.width || !rect.height || rect.top >= skyHeight) continue;
+        // Text under something else, such as the sticky prompt line, can't be read there, and
+        // its pixels are the other thing's: it's measured where it can be seen.
+        const onTop = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        if (onTop && !element.contains(onTop)) continue;
         const text = node.textContent.trim().replace(/\s+/g, ' ').slice(0, 40);
         found.push({ text, color, large, x: rect.left, y: rect.top, w: rect.width, h: rect.height });
       }
@@ -170,7 +185,7 @@ async function skyContrastFailures(page: Page): Promise<SkyContrastFailure[]> {
 for (const path of pages) {
   test.describe(path, () => {
     test('has no axe violations', async ({ page }) => {
-      await page.goto(path);
+      await visit(page, path);
       // axe cannot measure text over the sky (stars, aurora, the landing fade), so there it
       // reports contrast as "needs review" instead of failing. All three are decorative and
       // aria-hidden; without them, text is checked against the page background. Contrast
@@ -191,7 +206,7 @@ for (const path of pages) {
       const failures: string[] = [];
       for (const width of SKY_WIDTHS) {
         await page.setViewportSize({ width, height: SKY_HEIGHT });
-        await page.goto(path);
+        await visit(page, path);
         for (const failure of await skyContrastFailures(page)) {
           failures.push(`${width}px: "${failure.text}" is ${failure.contrast}:1, needs ${failure.required}:1`);
         }
@@ -200,7 +215,7 @@ for (const path of pages) {
     });
 
     test('skip link comes first and every focus stop is visible', async ({ page }) => {
-      await page.goto(path);
+      await visit(page, path);
       const stops = await tabThrough(page);
       expect(stops[0]?.name, 'first tab stop').toMatch(/skip to content/i);
       const withoutRing = stops.filter((stop) => !stop.hasRing).map((stop) => stop.name);

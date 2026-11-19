@@ -5,8 +5,9 @@ Advent of Cloud Native is a 24-day Cloud Native advent calendar in the spirit of
 Twelve CNCF projects get two days each. Every other day starting December 1 a new door opens with a
 5–10 minute maintainer interview and a hands-on challenge that takes 15–30 minutes. Challenges start
 from something running and broken; players fix them and verify against a live cluster with the
-`aocn` CLI. Points decay with each verification attempt and over time, so players can catch up at
-any point.
+`aocn` CLI. Every fixed door is worth the same 100 points, whenever it's fixed, so players can
+catch up at any point. Hints cost points; failed verifies only break ties. There's no global
+leaderboard: players compare themselves on leaderboards they make for their own groups.
 
 The whole calendar tells one story: POLARIS-7, the dry AI of an Arctic research station, spends December
 watching a stranded crew break everything on her cluster. Players are the station's new engineer.
@@ -95,7 +96,8 @@ Follows the same stack as `KatharinaSick/clubrizer`:
 - The schedule and the door gating must have unit tests: the code that decides when a door opens, and
   the code that decides whether a door's content may be shown. A mistake in either cannot be undone
   once it is public.
-- Scoring, points decay and anything the `aocn` CLI submits are in the same category when they arrive.
+- Scoring (`api/internal/scoring`), who may see or change a leaderboard, and anything the `aocn`
+  CLI submits are in the same category.
 - Layout and styling do not need tests.
 - Tests run in the build, so a broken invariant fails the deploy rather than reaching production:
   `npm run build` runs `astro check`, then `vitest run`, then `astro build`.
