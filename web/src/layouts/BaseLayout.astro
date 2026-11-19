@@ -138,6 +138,9 @@ const imageUrl = new URL(image.src, Astro.site);
       update();
       window.addEventListener('scroll', update, { passive: true });
       window.addEventListener('resize', update, { passive: true });
+      // A page that loads its content after it's shown (a leaderboard) grows without a scroll
+      // or a resize, and moves the footer down from under the prompt line.
+      new ResizeObserver(update).observe(document.body);
     </script>
   </body>
 </html>

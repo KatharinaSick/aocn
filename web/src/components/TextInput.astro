@@ -6,7 +6,11 @@
 // The border uses dim, not line-strong: a field's edge needs 3:1 against the page
 // (WCAG 1.4.11), and line-strong is 1.7:1. Errors go below the field as a vim-style
 // message, never as a red border alone.
+//
+// Its look is in styles/controls.css, so a Vue island, which can't use Astro components, draws
+// the same field with class="textInput", next to a label with class="textInputLabel".
 import type { HTMLAttributes } from 'astro/types';
+import '../styles/controls.css';
 
 interface Props extends Omit<HTMLAttributes<'input'>, 'id'> {
   id: string;
@@ -20,37 +24,3 @@ const { id, label, visibleLabel = false, underline = false, type = 'text', class
 
 <label class:list={[{ srOnly: !visibleLabel }, 'textInputLabel']} for={id}>{label}</label>
 <input class:list={['textInput', { textInputUnderline: underline }, className]} id={id} type={type} {...attributes} />
-
-<style>
-  .textInputLabel {
-    color: var(--color-muted);
-    font-size: var(--font-size-small);
-    line-height: var(--line-height-small);
-  }
-
-  .textInput {
-    height: var(--size-control);
-    padding: 0 var(--space-4);
-    border: 1px solid var(--color-dim);
-    border-radius: var(--radius-none);
-    background: var(--color-bg);
-    color: var(--color-text);
-    font-size: var(--font-size-input);
-  }
-
-  /* The bottom line alone still marks the field: dim is 5:1 against the page. */
-  .textInputUnderline {
-    padding: 0;
-    border-width: 0 0 1px;
-    background: transparent;
-  }
-
-  .textInput::placeholder {
-    color: var(--color-dim);
-    opacity: 1;
-  }
-
-  .textInput:focus-visible {
-    outline-color: var(--color-aurora);
-  }
-</style>

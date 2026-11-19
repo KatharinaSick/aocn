@@ -125,17 +125,12 @@ const glance = [
           <h2 class="manSectionName" id="man-points">points</h2>
           <div class="manSectionBody">
             <p>
-              Every door you fix is worth <strong class="manEmphasis">100 points</strong>. Hints get more expensive as
-              they give away more: the first costs <strong class="manEmphasis">5</strong>, the second{' '}
-              <strong class="manEmphasis">15</strong>, the third <strong class="manEmphasis">30</strong>.
+              Every door you fix is worth <strong class="manEmphasis">100 points</strong>, whenever you fix it, so you
+              can join late and still catch up. Hints cost 5, 15 and 30: the more they give away, the more they cost.
+              Verifying is free, and failed verifies only break ties.
             </p>
             <p>
-              Verifying is free. Failed verifies don't cost points, but when two players have the same points, the one
-              with fewer failed verifies is ahead.
-            </p>
-            <p>
-              When you fix it doesn't matter. Fix door 1 on Christmas Day and it's worth as much as on December 1, so{' '}
-              <strong class="manEmphasis">you can join late and still catch up.</strong>
+              Compare with the people you play with on a <a href="/leaderboards">leaderboard</a>.
             </p>
           </div>
         </section>
@@ -223,10 +218,11 @@ const glance = [
     padding: var(--space-12) var(--page-gutter);
   }
 
+  /* Brighter than muted: on phones, its right end sits on the aurora. */
   .manRunningHead {
     display: flex;
     justify-content: space-between;
-    color: var(--color-muted);
+    color: var(--color-text-soft);
     font-size: var(--font-size-small);
     line-height: var(--line-height-small);
   }

@@ -4,6 +4,7 @@
 // but can't be served, for the page that says to come back later. One made-up player has
 // fixed door 1, for the profile card; another sees their own private card. Door 5 isn't open yet, and
 // door 7 is a previewer's early look, before its interview is uploaded. Door 9 was never uploaded.
+// The player is logged in, on one leaderboard they own, and has an invite to it.
 import { createServer } from 'node:http';
 
 const port = Number(process.argv[2] ?? 4801);
@@ -24,6 +25,9 @@ const door = {
   ],
 };
 
+const BOARD_ID = 'Example000000000';
+const JOIN_CODE = 'ExampleCode00000';
+
 const profile = {
   login: 'example',
   avatarUrl: '',
@@ -31,6 +35,31 @@ const profile = {
   doors: [{ door: 1, solvedAt: '2026-12-01T06:30:00+01:00' }],
   public: true,
   own: false,
+  leaderboards: [{ id: BOARD_ID, name: 'Example Team', rank: 1, members: 3, final: false }],
+};
+
+// A leaderboard as its owner sees it, so every part of the page is there: standings with a
+// tie, the invite link and the settings. Its deadline is set, so the note about it shows.
+const doorNumbers = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23];
+const board = {
+  id: BOARD_ID,
+  name: 'Example Team, with a name long enough to wrap',
+  public: true,
+  openJoin: false,
+  countsUntil: '2026-12-31T23:59:59.999+01:00',
+  final: false,
+  owner: { login: 'example', avatarUrl: '' },
+  members: 3,
+  maxMembers: 200,
+  you: { loggedIn: true, member: true, owner: true },
+  joinCode: JOIN_CODE,
+  doors: doorNumbers.map((door) => ({ door, opensAt: `2026-12-${String(door).padStart(2, '0')}T06:00:00+01:00`, counts: door <= 3 })),
+  standings: [
+    { rank: 1, id: 1, login: 'example', avatarUrl: '', profilePublic: true, you: true, owner: true, points: 195, failedVerifies: 1, fixed: 2, doors: [{ door: 1, points: 95, hints: 1, failedVerifies: 1 }, { door: 3, points: 100, hints: 0, failedVerifies: 0 }] },
+    { rank: 2, id: 2, login: 'another-example', avatarUrl: '', profilePublic: false, you: false, owner: false, points: 100, failedVerifies: 2, fixed: 1, doors: [{ door: 3, points: 100, hints: 0, failedVerifies: 2 }] },
+    { rank: 2, id: 3, login: 'third-example', avatarUrl: '', profilePublic: false, you: false, owner: false, points: 100, failedVerifies: 2, fixed: 1, doors: [{ door: 1, points: 100, hints: 0, failedVerifies: 2 }] },
+  ],
+  together: 4,
 };
 
 createServer((req, res) => {
@@ -52,6 +81,14 @@ createServer((req, res) => {
     res.end(JSON.stringify(profile));
   } else if (req.url === '/users/mine') {
     res.end(JSON.stringify({ ...profile, login: 'mine', public: false, own: true }));
+  } else if (req.url === '/me') {
+    res.end('{"login":"example","avatarUrl":""}');
+  } else if (req.url === '/me/leaderboards') {
+    res.end(JSON.stringify({ leaderboards: [{ id: BOARD_ID, name: board.name, public: true, own: true, members: 3, countsUntil: board.countsUntil, final: false, rank: 1 }], owned: 1, maxOwned: 3 }));
+  } else if (req.url === `/leaderboards/${BOARD_ID}`) {
+    res.end(JSON.stringify(board));
+  } else if (req.url === `/join/${JOIN_CODE}`) {
+    res.end(JSON.stringify({ name: board.name, public: false, countsUntil: board.countsUntil, final: false, owner: board.owner, members: 3, maxMembers: 200, full: false, member: false }));
   } else if (req.url === '/health') {
     res.end('{"status":"ok"}');
   } else {

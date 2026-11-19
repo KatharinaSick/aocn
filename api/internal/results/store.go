@@ -87,13 +87,13 @@ func (s *Store) FirstPasses(ctx context.Context, githubUserID int64) (map[int]ti
 // ErrHintOutOfOrder means a hint was asked for before the one before it: hints open in order.
 var ErrHintOutOfOrder = errors.New("hints open in order")
 
-// OpenHint records that the user opened the door's hint at index (0-based), at. Opening one
-// again changes nothing. Hints open in order: index must be one already opened, or the next
+// OpenHint records that the user opened the door's hint at index (0-based), at, and says
+// whether this call did: opening one again changes nothing, and returns false. Hints open in order: index must be one already opened, or the next
 // one, otherwise it's ErrHintOutOfOrder. The user must exist.
 //
 // Checking and recording are one statement, so two requests at once can't skip a hint or
 // record one twice: the second either finds it there or doesn't find the one before it yet.
-func (s *Store) OpenHint(ctx context.Context, githubUserID int64, door, index int, at time.Time) error {
+func (s *Store) OpenHint(ctx context.Context, githubUserID int64, door, index int, at time.Time) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `
 		INSERT INTO hint_views (github_user_id, door, hint, created_at)
 		SELECT $1::bigint, $2::integer, $3::integer, $4::timestamptz
@@ -102,22 +102,22 @@ func (s *Store) OpenHint(ctx context.Context, githubUserID int64, door, index in
 		githubUserID, door, index, at,
 	)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if tag.RowsAffected() == 1 {
-		return nil
+		return true, nil
 	}
 	var opened bool
 	if err := s.pool.QueryRow(ctx,
 		"SELECT EXISTS (SELECT 1 FROM hint_views WHERE github_user_id = $1 AND door = $2 AND hint = $3)",
 		githubUserID, door, index,
 	).Scan(&opened); err != nil {
-		return err
+		return false, err
 	}
 	if !opened {
-		return ErrHintOutOfOrder
+		return false, ErrHintOutOfOrder
 	}
-	return nil
+	return false, nil
 }
 
 // Progress returns everything recorded for each of the users, by door: their runs and the

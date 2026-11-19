@@ -58,7 +58,7 @@ type Accounts interface {
 // everything recorded for working out points. *results.Store asks the database.
 type ResultStore interface {
 	Record(ctx context.Context, user users.User, result results.Result) error
-	OpenHint(ctx context.Context, githubUserID int64, door, index int, at time.Time) error
+	OpenHint(ctx context.Context, githubUserID int64, door, index int, at time.Time) (bool, error)
 	Progress(ctx context.Context, githubUserIDs []int64) (map[int64]scoring.Progress, error)
 }
 
@@ -369,7 +369,7 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 			return
 		}
 		cost := before.Next.Cost
-		err = d.Results.OpenHint(ctx, a.callerID, a.door, req.Hint-1, d.now())
+		inserted, err := d.Results.OpenHint(ctx, a.callerID, a.door, req.Hint-1, d.now())
 		if errors.Is(err, results.ErrHintOutOfOrder) {
 			// Another aocn hint got there first.
 			writeJSONError(w, http.StatusConflict, "your hints changed in the meantime. Run aocn hint again")
@@ -386,7 +386,12 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 			writeJSONError(w, http.StatusServiceUnavailable, "the hint was opened, but can't be shown right now. Run aocn hint again in a few minutes")
 			return
 		}
-		log.Info("Hint opened", "door", a.door, "hint", req.Hint, "github_user_id", a.callerID, "cost", cost)
+		if !inserted {
+			// Another aocn hint opened it a moment ago, and said what it cost.
+			cost = 0
+		} else {
+			log.Info("Hint opened", "door", a.door, "hint", req.Hint, "github_user_id", a.callerID, "cost", cost)
+		}
 		writeJSON(w, http.StatusOK, openedHintResponse{hintsResponse: after, Cost: cost})
 	})
 }

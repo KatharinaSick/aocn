@@ -28,6 +28,20 @@
   to     = "/favicon.png"
   status = 200
 
+# Every leaderboard and every invite link is the same prerendered page, which reads the ID
+# or the code from the address and asks the API in the browser. A rewrite, so the address
+# stays; the pages that exist (/leaderboards/, /join/) are served as they are, since a
+# rewrite without force never shadows a file. `astro dev` does the same (web/plugins/rewrites.ts).
+[[redirects]]
+  from   = "/leaderboards/*"
+  to     = "/leaderboards/board/"
+  status = 200
+
+[[redirects]]
+  from   = "/join/*"
+  to     = "/join/"
+  status = 200
+
 # The door calendar is a static file; calendar apps need the right type to subscribe.
 [[headers]]
   for = "/calendar.ics"

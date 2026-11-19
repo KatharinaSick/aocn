@@ -40,6 +40,7 @@ describe('fetchProfile', () => {
         solved: new Map([[1, new Date('2026-12-01T06:30:00Z')]]),
         public: true,
         own: false,
+        leaderboards: [],
       },
     });
   });
@@ -86,6 +87,16 @@ describe('readProfileAnswer', () => {
     const { public: _, own: __, ...older } = body;
     const answer = readProfileAnswer(200, older);
     expect(answer.state === 'found' && [answer.profile.public, answer.profile.own]).toEqual([false, false]);
+  });
+
+  it('reads the leaderboards on a card, and leaves out what makes no sense', () => {
+    const answer = readProfileAnswer(200, {
+      ...body,
+      leaderboards: [{ id: 'AbCdEfGh12345_-x', name: 'Platform Team', rank: 1, members: 12, final: true }, { name: 'no id' }, null],
+    });
+    expect(answer.state === 'found' && answer.profile.leaderboards).toEqual([
+      { id: 'AbCdEfGh12345_-x', name: 'Platform Team', rank: 1, members: 12, final: true },
+    ]);
   });
 
   it('throws on nonsense', () => {

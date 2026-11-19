@@ -20,6 +20,16 @@ export interface Profile {
   public: boolean;
   /** Whether it's the card of who asked. */
   own: boolean;
+  /** The leaderboards they're in that who asked may see, with their rank on each. */
+  leaderboards: CardLeaderboard[];
+}
+
+export interface CardLeaderboard {
+  id: string;
+  name: string;
+  rank: number;
+  members: number;
+  final: boolean;
 }
 
 export type ProfileAnswer = { state: 'found'; profile: Profile } | { state: 'missing' } | { state: 'unavailable' };
@@ -81,6 +91,15 @@ export function readProfileAnswer(status: number, body: unknown): ProfileAnswer 
       solved,
       public: b.public === true,
       own: b.own === true,
+      leaderboards: (Array.isArray(b.leaderboards) ? (b.leaderboards as Record<string, unknown>[]) : [])
+        .filter((l) => typeof l?.id === 'string' && typeof l.name === 'string')
+        .map((l) => ({
+          id: l.id as string,
+          name: l.name as string,
+          rank: typeof l.rank === 'number' ? l.rank : 0,
+          members: typeof l.members === 'number' ? l.members : 0,
+          final: l.final === true,
+        })),
     },
   };
 }

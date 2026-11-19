@@ -8,18 +8,21 @@
 interface Props {
   /** The shell line above the title, e.g. "$ cat privacy.txt". */
   command: string;
+  /** The title. A page that only knows it in the browser replaces .textPageTitleText. */
   title: string;
+  /** Use the page's whole width, for a table; the page keeps its own text readable. */
+  wide?: boolean;
 }
 
-const { command, title } = Astro.props;
+const { command, title, wide = false } = Astro.props;
 ---
 
 <article class="textPage">
   <header class="textPageHeader">
     <p class="textPageCommand">{command}</p>
-    <h1 class="textPageTitle">{title}<span class="textPageUnderscore" aria-hidden="true">_</span></h1>
+    <h1 class="textPageTitle"><span class="textPageTitleText">{title}</span><span class="textPageUnderscore" aria-hidden="true">_</span></h1>
   </header>
-  <div class="textPageBody">
+  <div class:list={['textPageBody', { textPageBodyWide: wide }]}>
     <slot />
   </div>
 </article>
@@ -38,6 +41,7 @@ const { command, title } = Astro.props;
   }
 
   .textPageTitle {
+    overflow-wrap: anywhere;
     font-size: var(--font-size-title);
     line-height: var(--line-height-title);
     letter-spacing: var(--letter-spacing-title);
@@ -53,6 +57,10 @@ const { command, title } = Astro.props;
     gap: var(--space-4);
     max-width: 72ch;
     color: var(--color-text-body);
+  }
+
+  .textPageBody.textPageBodyWide {
+    max-width: none;
   }
 
   .textPageBody :global(h2) {

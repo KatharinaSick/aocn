@@ -122,7 +122,7 @@ func TestOpenHintOpensInOrderAndOnce(t *testing.T) {
 		{3, 0, nil}, // each door on its own
 	}
 	for i, s := range steps {
-		if err := store.OpenHint(ctx, 42, s.door, s.index, at.Add(time.Duration(i)*time.Minute)); !errors.Is(err, s.want) {
+		if _, err := store.OpenHint(ctx, 42, s.door, s.index, at.Add(time.Duration(i)*time.Minute)); !errors.Is(err, s.want) {
 			t.Errorf("step %d (door %d, hint %d): got %v, want %v", i, s.door, s.index, err, s.want)
 		}
 	}
@@ -143,7 +143,7 @@ func TestOpenHintOpensInOrderAndOnce(t *testing.T) {
 
 func TestOpenHintNeedsTheUser(t *testing.T) {
 	store, _ := testStore(t)
-	if err := store.OpenHint(context.Background(), 404, 1, 0, time.Now()); err == nil {
+	if _, err := store.OpenHint(context.Background(), 404, 1, 0, time.Now()); err == nil {
 		t.Error("recorded a hint for nobody")
 	}
 }
@@ -168,7 +168,7 @@ func TestProgress(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.OpenHint(ctx, 43, 3, 0, at); err != nil {
+	if _, err := store.OpenHint(ctx, 43, 3, 0, at); err != nil {
 		t.Fatal(err)
 	}
 

@@ -1,0 +1,20 @@
+---
+// One leaderboard. Netlify serves this page for every /leaderboards/<id> (netlify.toml), and
+// so does `astro dev` (plugins/rewrites.ts); the board is loaded in the browser from the ID
+// in the address, and the API decides who may see it. Nothing personal is in this page.
+import TextPage from '../../components/TextPage.astro';
+import LeaderboardBoard from '../../islands/LeaderboardBoard.vue';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="leaderboard"
+  description="A leaderboard on Advent of Cloud Native."
+  noindex
+  pola={{ mood: 'neutral', message: 'I keep the scores. I do not take sides. Mostly.' }}
+>
+  <!-- The title becomes the board's name once it's loaded. -->
+  <TextPage command="$ cat leaderboard" title="leaderboard" wide>
+    <LeaderboardBoard client:load />
+  </TextPage>
+</BaseLayout>

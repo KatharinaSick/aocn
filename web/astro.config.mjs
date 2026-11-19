@@ -3,6 +3,7 @@ import { defineConfig, fontProviders } from 'astro/config';
 import netlify from '@astrojs/netlify';
 import sitemap from '@astrojs/sitemap';
 import vue from '@astrojs/vue';
+import { rewrites } from './plugins/rewrites.ts';
 import { schedule } from './plugins/schedule.ts';
 
 // The Netlify adapter is loaded for `astro build` only. `astro dev` renders on-demand
@@ -21,7 +22,7 @@ const countVisits = process.env.CONTEXT === 'production';
 const apiUrl = process.env.API_URL || 'http://localhost:8080';
 
 // Pages with `noindex` in BaseLayout. They stay out of the sitemap too; keep the two in step.
-const noindexPaths = ['/404', '/design-system', '/subscribe/confirm'];
+const noindexPaths = ['/404', '/design-system', '/subscribe/confirm', '/leaderboards', '/leaderboards/board', '/join'];
 
 // The page the social preview image is drawn from (scripts/social-image.ts). It exists
 // under `astro dev` only, so it is never built or deployed.
@@ -51,8 +52,9 @@ export default defineConfig({
     sitemap({ filter: (page) => !noindexPaths.includes(new URL(page).pathname.replace(/\/$/, '')) }),
     socialImagePage,
   ],
-  // Locally, /api/* goes to the API from `devbox run api`, the way netlify.toml sends it
-  // to Cloud Run in production: same prefix, stripped before it reaches the API.
+  // Locally, /api/* goes to the API from `devbox run api` (or API_URL, the accessibility
+  // tests' fake one), the way netlify.toml sends it to Cloud Run in production: same prefix,
+  // stripped before it reaches the API.
   vite: {
     // resvg's WebAssembly, built into the share image's function with ?inline
     // (src/pages/u/[login]/card.png.ts), so it needs no file next to it at runtime.
@@ -63,11 +65,12 @@ export default defineConfig({
     },
     server: {
       proxy: {
-        '^/api/': { target: 'http://localhost:8080', rewrite: (path) => path.replace(/^\/api/, '') },
+        '^/api/': { target: apiUrl, rewrite: (path) => path.replace(/^\/api/, '') },
       },
     },
-    // schedule.yaml at the repository root, as `virtual:schedule` (see plugins/schedule.ts).
-    plugins: [schedule()],
+    // schedule.yaml at the repository root, as `virtual:schedule` (see plugins/schedule.ts),
+    // and netlify.toml's rewrites for the leaderboard pages (see plugins/rewrites.ts).
+    plugins: [schedule(), rewrites()],
   },
   // Self-hosted: Astro downloads the font files at build time and serves them from
   // aocn.dev, so no visitor request goes to a third-party font CDN.

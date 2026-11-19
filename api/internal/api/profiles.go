@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/katharinasick/aocn/api/internal/app"
+	"github.com/katharinasick/aocn/api/internal/leaderboards"
 	"github.com/katharinasick/aocn/api/internal/schedule"
 	"github.com/katharinasick/aocn/api/internal/users"
 )
@@ -42,6 +43,8 @@ type Profiles struct {
 	Schedule *schedule.Schedule
 	Users    ProfileUsers
 	Results  ProfileResults
+	// Boards lists the leaderboards on a card. Without a store, a card lists none.
+	Boards Leaderboards
 	// SessionKey checks the website's session cookie, which tells the owner of a card.
 	SessionKey []byte
 	// Now is the clock; nil means time.Now. Tests set it.
@@ -70,6 +73,19 @@ type profileResponse struct {
 	Public bool `json:"public"`
 	// Own is whether the card is the one of who asks.
 	Own bool `json:"own"`
+	// Leaderboards are the ones they're in that who asks may see, with their rank.
+	Leaderboards []cardLeaderboard `json:"leaderboards"`
+}
+
+// cardLeaderboard is a leaderboard on someone's card. No points and no failed verifies:
+// points on every public card would make cards comparable, a global leaderboard in all but
+// name. The rank and the member count give the context; the board has the numbers.
+type cardLeaderboard struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Rank    int    `json:"rank"`
+	Members int    `json:"members"`
+	Final   bool   `json:"final"`
 }
 
 // mayShow says whether a card may be shown to who asks: everyone if it's public, and its
@@ -139,15 +155,60 @@ func handleProfile(log app.Logger, p Profiles) http.Handler {
 			writeJSONError(w, http.StatusServiceUnavailable, "try again in a few minutes")
 			return
 		}
+		boards, err := p.cardLeaderboards(ctx, profile.GitHubID, viewer, loggedIn, now)
+		if err != nil {
+			log.Error("Looking up a profile's leaderboards failed", "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "try again in a few minutes")
+			return
+		}
 		writeJSON(w, http.StatusOK, profileResponse{
-			Login:     profile.Login,
-			AvatarURL: profile.AvatarURL,
-			Since:     profile.Since,
-			Doors:     solvedDoors(p.Schedule, passes, now),
-			Public:    profile.Public,
-			Own:       isOwner(profile, viewer, loggedIn),
+			Login:        profile.Login,
+			AvatarURL:    profile.AvatarURL,
+			Since:        profile.Since,
+			Doors:        solvedDoors(p.Schedule, passes, now),
+			Public:       profile.Public,
+			Own:          isOwner(profile, viewer, loggedIn),
+			Leaderboards: boards,
 		})
 	})
+}
+
+// cardLeaderboards are the leaderboards the player is in that the viewer may see: public
+// ones, and private ones the viewer is in too. A private board never shows to anyone outside
+// it, not even its name. The owner of a card is in all of theirs, so they see them all.
+func (p Profiles) cardLeaderboards(ctx context.Context, player, viewer int64, loggedIn bool, now time.Time) ([]cardLeaderboard, error) {
+	list := []cardLeaderboard{}
+	if p.Boards.Store == nil {
+		return list, nil
+	}
+	boards, err := p.Boards.Store.OfMember(ctx, player)
+	if err != nil {
+		return nil, err
+	}
+	viewersBoards := map[string]bool{}
+	if loggedIn {
+		theirs, err := p.Boards.Store.OfMember(ctx, viewer)
+		if err != nil {
+			return nil, err
+		}
+		for _, b := range theirs {
+			viewersBoards[b.ID] = true
+		}
+	}
+	var visible []leaderboards.Leaderboard
+	for _, b := range boards {
+		if b.Public || viewersBoards[b.ID] {
+			visible = append(visible, b)
+		}
+	}
+	ranks, err := p.Boards.ranksOf(ctx, visible, player, now)
+	if err != nil {
+		return nil, err
+	}
+	for _, b := range visible {
+		list = append(list, cardLeaderboard{ID: b.ID, Name: b.Name, Rank: ranks[b.ID], Members: b.Members, Final: isFinal(b, now)})
+	}
+	return list, nil
 }
 
 type profileVisibility struct {

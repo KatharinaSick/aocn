@@ -166,24 +166,24 @@ func (f *fakeResults) Record(_ context.Context, user users.User, result results.
 }
 
 // OpenHint keeps hints in order, like the database.
-func (f *fakeResults) OpenHint(_ context.Context, id int64, door, index int, at time.Time) error {
+func (f *fakeResults) OpenHint(_ context.Context, id int64, door, index int, at time.Time) (bool, error) {
 	if f.err != nil {
-		return f.err
+		return false, f.err
 	}
 	opened := 0
 	for _, h := range f.hints {
 		if h.id == id && h.door == door {
 			if h.index == index {
-				return nil
+				return false, nil
 			}
 			opened++
 		}
 	}
 	if index != opened {
-		return results.ErrHintOutOfOrder
+		return false, results.ErrHintOutOfOrder
 	}
 	f.hints = append(f.hints, openedHint{id, door, index, at})
-	return nil
+	return true, nil
 }
 
 func (f *fakeResults) Progress(_ context.Context, ids []int64) (map[int64]scoring.Progress, error) {
@@ -240,7 +240,7 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 		Results:    a.results,
 		SessionKey: sessionKey,
 		Now:        func() time.Time { return *a.clock },
-	}, Auth{}, Profiles{})
+	}, Auth{}, Profiles{}, Leaderboards{})
 	return a
 }
 

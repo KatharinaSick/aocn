@@ -79,7 +79,7 @@ func authAt(t *testing.T, oauth OAuthApp) authAPI {
 		SessionKey: sessionKey,
 		SiteURL:    "https://aocn.dev",
 		Now:        func() time.Time { return loginNow },
-	}, Profiles{})
+	}, Profiles{}, Leaderboards{})
 	return a
 }
 
@@ -416,7 +416,7 @@ func TestLoginsAreLimitedAllTogether(t *testing.T) {
 
 // Without an OAuth app (dev mode only) there's nothing to check a token as, so nobody signs in.
 func TestCLILoginWithoutAnOAuthApp(t *testing.T) {
-	h := NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{SessionKey: sessionKey}, Profiles{})
+	h := NewHandler(nopLogger{}, Subscriptions{}, Doors{}, Auth{SessionKey: sessionKey}, Profiles{}, Leaderboards{})
 	if rec := postAs(h, "/auth/cli", "Bearer "+githubPlayerToken); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", rec.Code)
 	}

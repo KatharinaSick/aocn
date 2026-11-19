@@ -69,7 +69,7 @@ func profilesAt(t *testing.T, now time.Time, f *fakeProfiles) http.Handler {
 		Results:    f,
 		SessionKey: sessionKey,
 		Now:        func() time.Time { return now },
-	})
+	}, Leaderboards{})
 }
 
 func profileAt(t *testing.T, now time.Time) profileResponse {

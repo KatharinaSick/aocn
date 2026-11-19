@@ -398,7 +398,7 @@ const colorGroups = [
       </div>
 
       <div class="designSystemGroup">
-        <h3 class="designSystemGroupTitle">TextPage · command · title</h3>
+        <h3 class="designSystemGroupTitle">TextPage · command · title · wide</h3>
         <TextPage command="$ cat example.txt" title="example">
           <p>A paragraph of reading text, in <code>text-body</code>, with <strong>one highlight</strong> and a <a href="/privacy">link</a>.</p>
           <h2>a heading</h2>
@@ -415,6 +415,11 @@ const colorGroups = [
           <li>
             The pages stay plain HTML: <code>h2</code>, <code>p</code>, <code>ul</code>, <code>strong</code> and links
             get their look from the component. Headings are uppercase with a line above, like the man page's sections.
+          </li>
+          <li>
+            <code>wide</code> drops the 72-character column, for a page with a table that needs the room: a leaderboard.
+            Its text keeps itself readable. A title only known in the browser (the leaderboard's name) replaces
+            <code>.textPageTitleText</code>.
           </li>
         </ul>
       </div>
@@ -439,6 +444,11 @@ const colorGroups = [
           <li>
             With <code>href</code> it is a link with the same look, for actions that are a URL: <code>add to calendar</code>
             is <code>/calendar.ics</code>.
+          </li>
+          <li>
+            In a Vue island, which can't use Astro components, it's the same classes:{' '}
+            <code>class="button button-primary"</code>, with <code>styles/controls.css</code> imported. The leaderboard
+            pages do that, and TextInput works the same way (<code>textInput</code>, <code>textInputLabel</code>).
           </li>
         </ul>
       </div>

@@ -1,0 +1,18 @@
+---
+// An invite link. Netlify serves this page for every /join/<code> (netlify.toml), and so does
+// `astro dev` (plugins/rewrites.ts); what the link is for is loaded in the browser.
+import TextPage from '../../components/TextPage.astro';
+import LeaderboardJoin from '../../islands/LeaderboardJoin.vue';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="join a leaderboard"
+  description="An invite to a leaderboard on Advent of Cloud Native."
+  noindex
+  pola={{ mood: 'neutral', message: 'Someone wants you on their leaderboard. I would not read too much into it.' }}
+>
+  <TextPage command="$ join" title="join a leaderboard">
+    <LeaderboardJoin client:load />
+  </TextPage>
+</BaseLayout>
