@@ -1,12 +1,12 @@
 ---
 // The footer on every page: the domain, privacy, imprint and the vim keys hint on the left, the GitHub mark
-// in the middle, the supporter on the right. Everything stays muted; links are underlined.
+// in the middle, the credits and the supporter on the right. Everything stays muted; links are underlined.
 //
 // The vim keys hint is a button: it opens the ? help overlay, so the keys can be found,
 // and switched back on, without the keyboard. Touch screens do not get it: the keys need
 // a keyboard.
 //
-// On mobile three lines stack: the GitHub mark, spelled out, the supporter, then privacy and
+// On mobile three lines stack: the GitHub mark, spelled out, the credits and the supporter, then privacy and
 // imprint. The domain is the address bar's job there, and the vim keys hint goes with it.
 
 // The website repository for now. Once the challenges repository is public, this may
@@ -30,7 +30,8 @@ const GITHUB_URL = 'https://github.com/KatharinaSick/aocn';
     <span class="siteFooterGithubLabel">GitHub</span>
   </a>
   <span class="siteFooterRight">
-    supported with <span class="siteFooterHeart" aria-hidden="true">&lt;3</span><span class="srOnly">love</span> by{' '}
+    made with <span class="siteFooterHeart" aria-hidden="true">&lt;3</span><span class="srOnly">love</span> by{' '}
+    <a class="siteFooterLink" href="/credits">these people</a>{' '}·{' '}supported by{' '}
     <a class="siteFooterLink" href="https://www.dynatrace.com" target="_blank" rel="sponsored noopener">Dynatrace</a>
   </span>
 </footer>
