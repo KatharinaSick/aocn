@@ -57,17 +57,17 @@ func TestHintsOpenOneAtATime(t *testing.T) {
 		t.Errorf("before any hint: %s", body)
 	}
 
-	opened := readOpened(t, openHint(h, "1", playerToken, `{"hint": 1}`))
+	opened := readOpened(t, openHint(h, "1", playerToken, `{"hint": 1, "cost": 5}`))
 	if opened.Cost != 5 || !slices.Equal(opened.Hints, []string{"first-hint"}) || *opened.Next != (nextHint{Hint: 2, Cost: 15}) {
 		t.Errorf("first: %+v", opened)
 	}
 	// Again: free, and nothing more.
-	opened = readOpened(t, openHint(h, "1", playerToken, `{"hint": 1}`))
+	opened = readOpened(t, openHint(h, "1", playerToken, `{"hint": 1, "cost": 5}`))
 	if opened.Cost != 0 || len(opened.Hints) != 1 {
 		t.Errorf("first again: %+v", opened)
 	}
 	// Skipping ahead is refused, and gives nothing away.
-	rec := openHint(h, "1", playerToken, `{"hint": 3}`)
+	rec := openHint(h, "1", playerToken, `{"hint": 3, "cost": 30}`)
 	if rec.Code != http.StatusConflict {
 		t.Errorf("third before second: status %d", rec.Code)
 	}
@@ -77,11 +77,11 @@ func TestHintsOpenOneAtATime(t *testing.T) {
 		}
 	}
 
-	opened = readOpened(t, openHint(h, "1", playerToken, `{"hint": 2}`))
+	opened = readOpened(t, openHint(h, "1", playerToken, `{"hint": 2, "cost": 15}`))
 	if opened.Cost != 15 || *opened.Next != (nextHint{Hint: 3, Cost: 30}) {
 		t.Errorf("second: %+v", opened)
 	}
-	opened = readOpened(t, openHint(h, "1", playerToken, `{"hint": 3}`))
+	opened = readOpened(t, openHint(h, "1", playerToken, `{"hint": 3, "cost": 30}`))
 	if opened.Cost != 30 || opened.Next != nil || !slices.Equal(opened.Hints, []string{"first-hint", "second-hint", "third-hint"}) {
 		t.Errorf("third: %+v", opened)
 	}
@@ -100,7 +100,7 @@ var errDown = errors.New("database is down")
 
 func TestOpenHintRefusesNonsense(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, uploaded)
-	for _, body := range []string{``, `{}`, `{"hint": 0}`, `{"hint": 4}`, `{"hint": -1}`, `{"hint": "1"}`, `{"hint": 1, "free": true}`, `[1]`} {
+	for _, body := range []string{``, `{}`, `{"hint": 1}`, `{"hint": 0}`, `{"hint": 4}`, `{"hint": -1}`, `{"hint": "1"}`, `{"hint": 1, "free": true}`, `[1]`} {
 		if rec := openHint(h, "1", playerToken, body); rec.Code != http.StatusBadRequest {
 			t.Errorf("%q: status %d, want 400", body, rec.Code)
 		}
@@ -115,13 +115,13 @@ func TestOpenHintRefusesNonsense(t *testing.T) {
 func TestHintsOfAClosedDoor(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
 	for _, token := range []string{playerToken, door3PreviewerToken} {
-		rec := openHint(h, "1", token, `{"hint": 1}`)
+		rec := openHint(h, "1", token, `{"hint": 1, "cost": 0}`)
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("status %d, want 404", rec.Code)
 		}
 		assertNoSecrets(t, "closed door", rec)
 	}
-	opened := readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1}`))
+	opened := readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1, "cost": 0}`))
 	if opened.Cost != 0 || !opened.Preview || opened.Next.Cost != 0 {
 		t.Errorf("previewer: %+v", opened)
 	}
@@ -135,7 +135,7 @@ func TestHintsAfterTheFixAreFree(t *testing.T) {
 	if !got.Fixed || got.Next.Cost != 0 {
 		t.Errorf("got %+v", got)
 	}
-	if opened := readOpened(t, openHint(h, "1", playerToken, `{"hint": 1}`)); opened.Cost != 0 {
+	if opened := readOpened(t, openHint(h, "1", playerToken, `{"hint": 1, "cost": 0}`)); opened.Cost != 0 {
 		t.Errorf("opened: %+v", opened)
 	}
 }
@@ -165,11 +165,11 @@ func TestOpenHintRefusesAnotherPrice(t *testing.T) {
 
 func TestOpenHintNeedsTheAccountAndTheDatabase(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, uploaded)
-	if rec := openHint(h, "1", cliToken(404), `{"hint": 1}`); rec.Code != http.StatusUnauthorized {
+	if rec := openHint(h, "1", cliToken(404), `{"hint": 1, "cost": 5}`); rec.Code != http.StatusUnauthorized {
 		t.Errorf("unknown account: status %d, want 401", rec.Code)
 	}
 	h.results.err = errDown
-	if rec := openHint(h, "1", playerToken, `{"hint": 1}`); rec.Code != http.StatusServiceUnavailable {
+	if rec := openHint(h, "1", playerToken, `{"hint": 1, "cost": 5}`); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("database down: status %d, want 503", rec.Code)
 	}
 	if rec := getAs(h, "/doors/1/hints", playerToken); rec.Code != http.StatusServiceUnavailable {
@@ -201,7 +201,7 @@ func TestVerifyAnswersWithPoints(t *testing.T) {
 		t.Errorf("broken: recorded %+v", h.results.recorded[1].result)
 	}
 	*h.clock = now.Add(2 * time.Minute)
-	readOpened(t, openHint(h, "1", playerToken, `{"hint": 1}`))
+	readOpened(t, openHint(h, "1", playerToken, `{"hint": 1, "cost": 5}`))
 
 	*h.clock = now.Add(3 * time.Minute)
 	rec = verifyAs(h, "1", playerToken, resultsFor(checks, true))
@@ -215,7 +215,7 @@ func TestVerifyAnswersWithPoints(t *testing.T) {
 
 	// Later passes don't change it.
 	*h.clock = now.Add(4 * time.Minute)
-	readOpened(t, openHint(h, "1", playerToken, `{"hint": 2}`))
+	readOpened(t, openHint(h, "1", playerToken, `{"hint": 2, "cost": 0}`))
 	rec = verifyAs(h, "1", playerToken, resultsFor(checks, true))
 	body = verifyResponse{}
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
@@ -230,7 +230,7 @@ func TestVerifyPreviewAnswersWithPoints(t *testing.T) {
 	checks := door1Checks(t)
 	verifyAs(h, "1", previewerToken, []results.CheckResult{{ID: checks[0].ID, Passed: true}, {ID: checks[1].ID}})
 	*h.clock = h.clock.Add(time.Minute)
-	readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1}`))
+	readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1, "cost": 0}`))
 	*h.clock = h.clock.Add(time.Minute)
 	rec := verifyAs(h, "1", previewerToken, resultsFor(checks, true))
 	var body verifyResponse

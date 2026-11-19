@@ -314,9 +314,9 @@ type openHintRequest struct {
 	// Hint is the number of the hint to open, from 1: the one aocn hint said the price of,
 	// so a second aocn hint at the same time can't open one more than the player agreed to.
 	Hint int `json:"hint"`
-	// Cost is what aocn hint said it costs, if it said: opening it refuses another price, so
-	// a door that opened or got fixed while the player was asked never costs what they
-	// didn't agree to.
+	// Cost is what aocn hint said it costs, and must be there: opening it refuses another
+	// price, so a door that opened or got fixed while the player was asked never costs what
+	// they didn't agree to. A pointer, so a body without it is refused instead of read as 0.
 	Cost *int `json:"cost"`
 }
 
@@ -332,8 +332,8 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 		var req openHintRequest
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBytes))
 		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&req); err != nil {
-			writeJSONError(w, http.StatusBadRequest, `send {"hint": N}, the number of the hint to open`)
+		if err := decoder.Decode(&req); err != nil || req.Cost == nil {
+			writeJSONError(w, http.StatusBadRequest, `send {"hint": N, "cost": C}: the number of the hint to open, and what it costs`)
 			return
 		}
 		ctx := r.Context()
@@ -363,7 +363,7 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 			}{fmt.Sprintf("hints open in order: open hint %d first", len(before.Hints)+1), before})
 			return
 		}
-		if req.Cost != nil && *req.Cost != before.Next.Cost {
+		if *req.Cost != before.Next.Cost {
 			writeJSON(w, http.StatusConflict, struct {
 				Error string `json:"error"`
 				hintsResponse
