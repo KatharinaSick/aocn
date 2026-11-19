@@ -1,0 +1,109 @@
+---
+// The credits: who made it, the team, the maintainers and Dynatrace. Linked from the footer's heart.
+//
+// Maintainers are listed by name only, A–Z by first name: no project and no door, so the
+// page thanks people without laying out the calendar. Only maintainers who have confirmed
+// go in here.
+import TextPage from '../components/TextPage.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+interface Person {
+  name: string;
+  github: string;
+  note?: string;
+}
+
+const maker: Person = { name: 'Katharina Sick', github: 'KatharinaSick' };
+
+const team: Person[] = [
+  { name: 'Adriana Villela', github: 'avillela' },
+  { name: 'Henrik Rexed', github: 'henrikrexed' },
+  { name: 'Jeff Blankenburg', github: 'jeffblankenburg', note: 'former teammate, still counts' },
+  { name: 'Sinduri Guntupalli', github: 'sindurigf' },
+];
+
+const maintainers: Person[] = [
+  { name: 'Diana Todea', github: 'didiViking' },
+  { name: 'Janet Kuo', github: 'janetkuo' },
+  { name: 'Jooho Lee', github: 'Jooho' },
+  { name: 'Lin Sun', github: 'linsun' },
+  { name: 'Liz Rice', github: 'lizrice' },
+  { name: 'Michael Crenshaw', github: 'crenshaw-dev' },
+  { name: 'Nili Guy', github: 'nilig' },
+  { name: 'Simon Schrottner', github: 'aepfli' },
+  { name: 'Takashi Norimatsu', github: 'tnorimat' },
+];
+---
+
+<BaseLayout
+  title="credits"
+  description="The people behind Advent of Cloud Native: the team, the maintainers who sat down for an interview, and Dynatrace."
+  pola={{ mood: 'neutral', message: "They thanked the humans. I'll be in the server room." }}
+>
+  <TextPage command="$ cat CREDITS" title="credits">
+    <p>
+      <strong>Thank you, from the bottom of my heart.</strong> I couldn't have built this calendar without the people
+      below, and I'm so grateful every one of them was part of it.
+    </p>
+
+    <h2>made by</h2>
+    <p>
+      <a href={`https://github.com/${maker.github}`} target="_blank" rel="noopener">{maker.name}</a>
+    </p>
+    <p>The idea, the story, the challenges, this site, and every one of POLARIS-7's bad moods.</p>
+
+    <h2>the team</h2>
+    <p>
+      Thank you for the feedback, the ideas and the connections, and for looking at things long before they were ready.
+    </p>
+    <ul class="creditsList">
+      {team.map((person) => (
+        <li>
+          <a href={`https://github.com/${person.github}`} target="_blank" rel="noopener">{person.name}</a>
+          {person.note && <span class="creditsNote">{' '}· {person.note}</span>}
+        </li>
+      ))}
+    </ul>
+
+    <h2>the maintainers</h2>
+    <p>
+      Thank you to every maintainer who sat down for an interview, in between releases, reviews and everything else it
+      takes to keep a project going. You are why the doors are worth opening.
+    </p>
+    <ul class="creditsList">
+      {maintainers.map((person) => (
+        <li>
+          <a href={`https://github.com/${person.github}`} target="_blank" rel="noopener">{person.name}</a>
+        </li>
+      ))}
+    </ul>
+
+    <h2>supported by</h2>
+    <p class="creditsSupporter">
+      <a href="https://www.dynatrace.com" target="_blank" rel="sponsored noopener">Dynatrace</a>
+    </p>
+    <p>
+      <strong>A big thank you to Dynatrace for letting me build this.</strong> For the time, the trust and the freedom to
+      make it about open source and the people behind it.
+    </p>
+  </TextPage>
+</BaseLayout>
+
+<style>
+  .creditsList {
+    list-style: none;
+  }
+
+  .creditsNote {
+    color: var(--color-muted);
+  }
+
+  /* The bigger shoutout. A deliberate exception to the type scale: title size shouts and
+     lead size whispers, so the supporter's name sits in between, on this page only. */
+  .creditsSupporter {
+    font-size: 28px;
+    line-height: var(--line-height-title);
+    letter-spacing: var(--letter-spacing-title);
+    font-weight: var(--font-weight-bold);
+  }
+</style>
