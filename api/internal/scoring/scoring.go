@@ -76,6 +76,9 @@ type Door struct {
 //
 // Whether the door is open yet is the caller's to decide: a previewer's pass from before the
 // opening is a fix here, at the opening.
+//
+// Runs after the first pass, runs that weren't ready and every run of a door never passed
+// change nothing here. results.Progress relies on that and doesn't load them.
 func Score(opensAt, until time.Time, runs []Run, hints []Hint) Door {
 	var firstPass time.Time
 	for _, r := range runs {

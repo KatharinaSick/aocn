@@ -45,9 +45,8 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	// Both need a signed-in player, and each opened hint is one row, at most three per door.
 	mux.Handle("GET /doors/{door}/hints", handleDoorHints(log, doors))
 	mux.Handle("POST /doors/{door}/hints/next", handleOpenHint(log, doors))
-	// Not limited either, for the same reason. Each run is one row; a door has no reason to
-	// be verified more than a few times a minute, so a limit per user is the first thing to
-	// add if anyone floods it.
+	// Not limited by IP, for the same reason: limited per player inside (verifyLimit), since
+	// each run is one row and leaderboards read them.
 	mux.Handle("POST /doors/{door}/verify", handleVerify(log, doors))
 	// Finishing a login asks GitHub, whatever the request carries: a made-up code or token
 	// still costs a call, and enough bad ones from our address could get it blocked there,

@@ -20,6 +20,10 @@ const (
 	MaxOwned = 3
 	// MaxMembers is how many players fit on one, owner included, the same as Advent of Code.
 	MaxMembers = 200
+	// MaxJoined is how many leaderboards one player may be on, owned ones included. Plenty
+	// for anyone's teams and meetups, and it bounds the work of their card and their list,
+	// which rank them on every one.
+	MaxJoined = 50
 )
 
 var (
@@ -27,6 +31,8 @@ var (
 	ErrNotFound = errors.New("no such leaderboard")
 	// ErrTooMany means the player owns MaxOwned already.
 	ErrTooMany = errors.New("too many leaderboards")
+	// ErrTooManyJoined means the player is on MaxJoined leaderboards already.
+	ErrTooManyJoined = errors.New("on too many leaderboards")
 	// ErrFull means the leaderboard has MaxMembers already.
 	ErrFull = errors.New("leaderboard is full")
 	// ErrClosed means the way in no longer works: the invite link was replaced, or the board
@@ -127,6 +133,9 @@ func (s *Store) Create(ctx context.Context, ownerID int64, name string, now time
 	if owned >= MaxOwned {
 		return Leaderboard{}, ErrTooMany
 	}
+	if err := checkJoined(ctx, tx, ownerID); err != nil {
+		return Leaderboard{}, err
+	}
 	l := Leaderboard{ID: newToken(), OwnerID: ownerID, Name: name, JoinCode: newToken(), CreatedAt: now, Members: 1}
 	if _, err := tx.Exec(ctx,
 		"INSERT INTO leaderboards (id, owner_id, name, join_code, created_at) VALUES ($1, $2, $3, $4, $5)",
@@ -171,6 +180,46 @@ func (s *Store) OfMember(ctx context.Context, githubUserID int64) ([]Leaderboard
 		boards = append(boards, l)
 	}
 	return boards, rows.Err()
+}
+
+// checkJoined is ErrTooManyJoined if the player is on MaxJoined boards already. The caller
+// holds the lock on the player.
+func checkJoined(ctx context.Context, tx pgx.Tx, githubUserID int64) error {
+	var joined int
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM leaderboard_members WHERE github_user_id = $1", githubUserID).Scan(&joined); err != nil {
+		return err
+	}
+	if joined >= MaxJoined {
+		return ErrTooManyJoined
+	}
+	return nil
+}
+
+// MembersOf returns who's on each of the leaderboards, by ID, in the order they joined: one
+// query for all of them. A board nobody's on is missing.
+func (s *Store) MembersOf(ctx context.Context, ids []string) (map[string][]Member, error) {
+	members := make(map[string][]Member, len(ids))
+	if len(ids) == 0 {
+		return members, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT m.leaderboard_id, u.github_user_id, u.login, u.profile_public, m.joined_at
+		FROM leaderboard_members m JOIN users u ON u.github_user_id = m.github_user_id
+		WHERE m.leaderboard_id = ANY($1)
+		ORDER BY m.joined_at, u.github_user_id`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var m Member
+		if err := rows.Scan(&id, &m.GitHubID, &m.Login, &m.ProfilePublic, &m.JoinedAt); err != nil {
+			return nil, err
+		}
+		members[id] = append(members[id], m)
+	}
+	return members, rows.Err()
 }
 
 // Members returns who's on the leaderboard, in the order they joined.
@@ -257,6 +306,14 @@ func (s *Store) Join(ctx context.Context, id, code string, githubUserID int64, n
 	}
 	if members >= MaxMembers {
 		return ErrFull
+	}
+	// Locking the player too makes their joins at once count one after the other. The board
+	// is always locked first, so two joins can't wait on each other.
+	if _, err := tx.Exec(ctx, "SELECT 1 FROM users WHERE github_user_id = $1 FOR UPDATE", githubUserID); err != nil {
+		return err
+	}
+	if err := checkJoined(ctx, tx, githubUserID); err != nil {
+		return err
 	}
 	if _, err := tx.Exec(ctx,
 		"INSERT INTO leaderboard_members (leaderboard_id, github_user_id, joined_at) VALUES ($1, $2, $3)",

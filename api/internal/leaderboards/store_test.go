@@ -355,3 +355,70 @@ func TestJoinChecksTheWayIn(t *testing.T) {
 		t.Errorf("open: %v", err)
 	}
 }
+
+// A player is on at most MaxJoined boards, made or joined.
+func TestJoinedLimit(t *testing.T) {
+	owners := (MaxJoined + MaxOwned) / MaxOwned
+	player := int64(owners + 1)
+	store, _ := testStore(t, owners+1)
+	ctx := context.Background()
+	var boards []Leaderboard
+	for owner := 1; owner <= owners; owner++ {
+		for range MaxOwned {
+			l, err := store.Create(ctx, int64(owner), "board", now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			boards = append(boards, l)
+		}
+	}
+	for i, l := range boards {
+		err := store.Join(ctx, l.ID, l.JoinCode, player, now)
+		if i < MaxJoined && err != nil {
+			t.Fatalf("board %d: %v", i+1, err)
+		}
+		if i >= MaxJoined && !errors.Is(err, ErrTooManyJoined) {
+			t.Errorf("board %d: %v, want ErrTooManyJoined", i+1, err)
+		}
+	}
+	// Making one counts too.
+	if _, err := store.Create(ctx, player, "mine", now); !errors.Is(err, ErrTooManyJoined) {
+		t.Errorf("creating: %v", err)
+	}
+	// One they're on already is fine: it changes nothing.
+	if err := store.Join(ctx, boards[0].ID, boards[0].JoinCode, player, now); err != nil {
+		t.Errorf("joining again: %v", err)
+	}
+}
+
+// MembersOf is Members for many boards at once.
+func TestMembersOf(t *testing.T) {
+	store, _ := testStore(t, 3)
+	ctx := context.Background()
+	a, _ := store.Create(ctx, 1, "a", now)
+	b, _ := store.Create(ctx, 2, "b", now)
+	if err := store.Join(ctx, a.ID, a.JoinCode, 3, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.MembersOf(ctx, []string{a.ID, b.ID, "AAAAAAAAAAAAAAAA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{a.ID, b.ID} {
+		want, _ := store.Members(ctx, id)
+		if len(got[id]) != len(want) {
+			t.Fatalf("%s: %+v, want %+v", id, got[id], want)
+		}
+		for i := range want {
+			if got[id][i].GitHubID != want[i].GitHubID || got[id][i].Login != want[i].Login {
+				t.Errorf("%s member %d: %+v, want %+v", id, i, got[id][i], want[i])
+			}
+		}
+	}
+	if len(got) != 2 {
+		t.Errorf("boards: %d", len(got))
+	}
+	if empty, err := store.MembersOf(ctx, nil); err != nil || len(empty) != 0 {
+		t.Errorf("none: %+v, %v", empty, err)
+	}
+}

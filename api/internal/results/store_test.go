@@ -162,6 +162,11 @@ func TestProgress(t *testing.T) {
 		{octo, Result{Door: 1, Checks: []CheckResult{}, At: at.Add(time.Minute)}},
 		// Never kept as not ready: it passed.
 		{octo, Result{Door: 1, Passed: true, NotReady: true, Checks: []CheckResult{}, At: at.Add(2 * time.Minute)}},
+		// After the first pass: Score ignores these, so they're not loaded.
+		{octo, Result{Door: 1, Checks: []CheckResult{}, At: at.Add(3 * time.Minute)}},
+		{octo, Result{Door: 1, Passed: true, Checks: []CheckResult{}, At: at.Add(4 * time.Minute)}},
+		// A door never passed: none of it counts.
+		{octo, Result{Door: 3, Checks: []CheckResult{}, At: at}},
 		{other, Result{Door: 3, Passed: true, Checks: []CheckResult{}, At: at}},
 	} {
 		if err := store.Record(ctx, r.user, r.result); err != nil {
@@ -176,9 +181,10 @@ func TestProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Only what Score counts: the failed run before the pass (not the one that wasn't
+	// ready), and the first pass.
 	runs := progress[42].Runs[1]
 	want := []scoring.Run{
-		{At: at, NotReady: true},
 		{At: at.Add(time.Minute)},
 		{At: at.Add(2 * time.Minute), Passed: true},
 	}
@@ -189,6 +195,9 @@ func TestProgress(t *testing.T) {
 		if !runs[i].At.Equal(want[i].At) || runs[i].Passed != want[i].Passed || runs[i].NotReady != want[i].NotReady {
 			t.Errorf("run %d: got %+v, want %+v", i, runs[i], want[i])
 		}
+	}
+	if len(progress[42].Runs[3]) != 0 {
+		t.Errorf("octo's runs on a door he never passed: %+v", progress[42].Runs[3])
 	}
 	if len(progress[42].Hints) != 0 || len(progress[43].Runs[3]) != 1 || len(progress[43].Hints[3]) != 1 {
 		t.Errorf("got %+v", progress)

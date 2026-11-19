@@ -229,3 +229,21 @@ func TestVerifyNeedsTheAccount(t *testing.T) {
 		t.Errorf("recorded %d runs", len(h.results.recorded))
 	}
 }
+
+// One player verifies at most verifyLimit times a minute; anyone else still can.
+func TestVerifyIsLimitedPerPlayer(t *testing.T) {
+	h := doorsAt(t, door1OpensAt.Add(time.Hour), uploaded)
+	sent := resultsFor(door1Checks(t), false)
+	for i := range verifyLimit {
+		if rec := verifyAs(h, "1", playerToken, sent); rec.Code != http.StatusOK {
+			t.Fatalf("verify %d: status %d, %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	rec := verifyAs(h, "1", playerToken, sent)
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "aocn verify again") {
+		t.Errorf("one too many: status %d, %s", rec.Code, rec.Body.String())
+	}
+	if rec := verifyAs(h, "1", previewerToken, sent); rec.Code != http.StatusOK {
+		t.Errorf("someone else: status %d", rec.Code)
+	}
+}

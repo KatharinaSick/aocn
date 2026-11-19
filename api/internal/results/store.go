@@ -120,8 +120,13 @@ func (s *Store) OpenHint(ctx context.Context, githubUserID int64, door, index in
 	return false, nil
 }
 
-// Progress returns everything recorded for each of the users, by door: their runs and the
-// hints they opened. A user with nothing recorded has an empty Progress.
+// Progress returns what's recorded for each of the users, by door, as far as points go: the
+// hints they opened, and of their runs only the ones scoring.Score can count. That's each
+// door's first pass, and the failed runs before it that didn't stop at a ready check. Runs on
+// a door they never passed, runs after the first pass and runs that weren't ready change
+// nothing, so they're left in the database: a player who verifies a hundred times doesn't
+// make every leaderboard they're on load a hundred rows. A user with nothing recorded has an
+// empty Progress.
 func (s *Store) Progress(ctx context.Context, githubUserIDs []int64) (map[int64]scoring.Progress, error) {
 	progress := make(map[int64]scoring.Progress, len(githubUserIDs))
 	for _, id := range githubUserIDs {
@@ -132,9 +137,17 @@ func (s *Store) Progress(ctx context.Context, githubUserIDs []int64) (map[int64]
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT github_user_id, door, passed, not_ready, created_at FROM verify_results
-		WHERE github_user_id = ANY($1)
-		ORDER BY created_at`, githubUserIDs)
+		WITH first_pass AS (
+			SELECT github_user_id, door, min(created_at) AS at FROM verify_results
+			WHERE github_user_id = ANY($1) AND passed
+			GROUP BY github_user_id, door
+		)
+		SELECT v.github_user_id, v.door, false, false, v.created_at
+		FROM verify_results v JOIN first_pass f USING (github_user_id, door)
+		WHERE NOT v.passed AND NOT v.not_ready AND v.created_at < f.at
+		UNION ALL
+		SELECT github_user_id, door, true, false, at FROM first_pass
+		ORDER BY 5`, githubUserIDs)
 	if err != nil {
 		return nil, err
 	}

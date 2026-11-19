@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/httprate"
 	"github.com/katharinasick/aocn/api/internal/app"
 	"github.com/katharinasick/aocn/api/internal/doors"
 	"github.com/katharinasick/aocn/api/internal/results"
@@ -438,6 +439,20 @@ func (d Doors) hintStateOf(a access, all []string, p scoring.Progress) hintsResp
 	return state
 }
 
+// verifyLimit is how often one player may verify, per verifyWindow, counted per instance like
+// every other limit. A person fixing a door verifies a few times a minute at most; an agent in
+// a loop doesn't get to fill verify_results.
+const (
+	verifyLimit  = 20
+	verifyWindow = time.Minute
+)
+
+// tooManyVerifies answers a player past verifyLimit.
+func tooManyVerifies(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Retry-After", "60")
+	writeJSONError(w, http.StatusTooManyRequests, "that's a lot of verifies in a minute. Wait a moment, then run aocn verify again")
+}
+
 // maxVerifyBytes bounds a verify request: a door has a few dozen checks with a short answer
 // each.
 const maxVerifyBytes = 64 << 10
@@ -470,9 +485,14 @@ type doorScore struct {
 // trust which checks ran: the results must be exactly the door's checks, by ID, and it
 // decides itself whether the door passed.
 func handleVerify(log app.Logger, d Doors) http.Handler {
+	limit := httprate.NewRateLimiter(verifyLimit, verifyWindow, httprate.WithLimitHandler(tooManyVerifies))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		a, ok := d.gate(log, w, r, true, false)
 		if !ok {
+			return
+		}
+		// Per player, not per IP: a whole workshop verifies from one address.
+		if limit.RespondOnLimit(w, r, strconv.FormatInt(a.callerID, 10)) {
 			return
 		}
 

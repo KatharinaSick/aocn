@@ -62,6 +62,7 @@ type LeaderboardStore interface {
 	ByJoinCode(ctx context.Context, code string) (leaderboards.Leaderboard, error)
 	OfMember(ctx context.Context, githubUserID int64) ([]leaderboards.Leaderboard, error)
 	Members(ctx context.Context, id string) ([]leaderboards.Member, error)
+	MembersOf(ctx context.Context, ids []string) (map[string][]leaderboards.Member, error)
 	IsMember(ctx context.Context, id string, githubUserID int64) (bool, error)
 	Join(ctx context.Context, id, code string, githubUserID int64, now time.Time) error
 	Leave(ctx context.Context, id string, githubUserID int64) error
@@ -373,19 +374,22 @@ func (l Leaderboards) standings(ctx context.Context, b leaderboards.Leaderboard,
 	return scoring.Rank(entries), nil
 }
 
-// ranksOf is the player's place on each of the boards, by board ID. Everyone's progress is
-// loaded at once, however many boards there are.
+// ranksOf is the player's place on each of the boards, by board ID. Two queries however many
+// boards there are: everyone's membership, then everyone's progress. A player is on at most
+// leaderboards.MaxJoined boards, which bounds the rest.
 func (l Leaderboards) ranksOf(ctx context.Context, boards []leaderboards.Leaderboard, githubUserID int64, now time.Time) (map[string]int, error) {
-	membersOf := make(map[string][]leaderboards.Member, len(boards))
+	boardIDs := make([]string, len(boards))
+	for i, b := range boards {
+		boardIDs[i] = b.ID
+	}
+	membersOf, err := l.Store.MembersOf(ctx, boardIDs)
+	if err != nil {
+		return nil, err
+	}
 	seen := map[int64]bool{}
 	var ids []int64
 	for _, b := range boards {
-		members, err := l.Store.Members(ctx, b.ID)
-		if err != nil {
-			return nil, err
-		}
-		membersOf[b.ID] = members
-		for _, m := range members {
+		for _, m := range membersOf[b.ID] {
 			if !seen[m.GitHubID] {
 				seen[m.GitHubID] = true
 				ids = append(ids, m.GitHubID)
@@ -498,6 +502,10 @@ func handleCreateLeaderboard(log app.Logger, l Leaderboards) http.Handler {
 		b, err := l.Store.Create(r.Context(), id, name, l.now())
 		if errors.Is(err, leaderboards.ErrTooMany) {
 			writeJSONError(w, http.StatusConflict, fmt.Sprintf("you can have %d leaderboards of your own. Delete one to make another", leaderboards.MaxOwned))
+			return
+		}
+		if errors.Is(err, leaderboards.ErrTooManyJoined) {
+			writeJSONError(w, http.StatusConflict, fmt.Sprintf("you're on %d leaderboards already. Leave one to make another", leaderboards.MaxJoined))
 			return
 		}
 		if err != nil {
@@ -935,6 +943,10 @@ func (l Leaderboards) join(log app.Logger, w http.ResponseWriter, r *http.Reques
 	}
 	if errors.Is(err, leaderboards.ErrBanned) {
 		writeJSONError(w, http.StatusForbidden, "the owner removed you from this leaderboard. Only they can let you back in")
+		return
+	}
+	if errors.Is(err, leaderboards.ErrTooManyJoined) {
+		writeJSONError(w, http.StatusConflict, fmt.Sprintf("you're on %d leaderboards already. Leave one to join another", leaderboards.MaxJoined))
 		return
 	}
 	if errors.Is(err, leaderboards.ErrFull) {
