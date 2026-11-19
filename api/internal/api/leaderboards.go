@@ -32,6 +32,10 @@ import (
 //   - Joining needs the invite link's code, which isn't the board's ID: seeing a public board
 //     doesn't let anyone in, unless its owner made it open.
 //   - Someone the owner removed can't join again, whichever way, until the owner lets them.
+//   - A public board shows anyone outside it the members whose card is private as "private":
+//     they may have joined while it was private, and their card says they want to stay
+//     unnamed. Their points still count, so the ranks are right. The owner, who made it
+//     public, is always named.
 //   - Every change comes from the website's session cookie, which is SameSite=Lax, and only
 //     as JSON, which a form on another site can't send.
 
@@ -271,7 +275,10 @@ type standing struct {
 	Login     string `json:"login"`
 	AvatarURL string `json:"avatarUrl"`
 	// ProfilePublic says whether their card may be linked to.
-	ProfilePublic  bool `json:"profilePublic"`
+	ProfilePublic bool `json:"profilePublic"`
+	// Private means who they are is left out: their card is private, and who asks sees a
+	// public board without being on it. Login and ID are empty then.
+	Private        bool `json:"private,omitempty"`
 	You            bool `json:"you"`
 	Owner          bool `json:"owner"`
 	Points         int  `json:"points"`
@@ -572,6 +579,7 @@ func (l Leaderboards) boardResponse(b leaderboards.Leaderboard, members []leader
 	}
 	for _, r := range ranked {
 		m := byID[r.ID]
+		hidden := !member && !m.ProfilePublic && r.ID != b.OwnerID
 		s := standing{
 			Rank:           r.Rank,
 			ID:             r.ID,
@@ -589,6 +597,9 @@ func (l Leaderboards) boardResponse(b leaderboards.Leaderboard, members []leader
 			if d := r.Total.Doors[o.Door]; d.Fixed {
 				s.Doors = append(s.Doors, standingDoor{Door: o.Door, Points: d.Points, Hints: d.Hints, FailedVerifies: d.FailedVerifies})
 			}
+		}
+		if hidden {
+			s.ID, s.Login, s.AvatarURL, s.Private = 0, "", "", true
 		}
 		resp.Together += r.Total.Fixed
 		resp.Standings = append(resp.Standings, s)

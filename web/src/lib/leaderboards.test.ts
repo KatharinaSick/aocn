@@ -12,7 +12,9 @@ import {
   inviteUrl,
   joinCodeFromPath,
   readAnswer,
+  playerName,
   readBoard,
+  rowKey,
   readJoinPreview,
   readMyBoards,
   readNothing,
@@ -110,6 +112,7 @@ const board = {
   standings: [
     { rank: 1, id: 1, login: 'alice', avatarUrl: '', profilePublic: true, you: false, owner: true, points: 195, failedVerifies: 1, fixed: 2, doors: [{ door: 1, points: 95, hints: 1, failedVerifies: 1 }, { door: 3, points: 100, hints: 0, failedVerifies: 0 }] },
     { rank: 2, id: 2, login: 'bob', avatarUrl: '', profilePublic: false, you: true, owner: false, points: 0, failedVerifies: 0, fixed: 0, doors: [] },
+    { rank: 3, private: true, login: 'ignored', profilePublic: true, points: 0, doors: [] },
     { login: '' },
   ],
   together: 2,
@@ -123,7 +126,13 @@ describe('readBoard', () => {
     expect(b.countsUntil?.toISOString()).toBe('2026-12-31T22:59:00.000Z');
     expect(b.you).toEqual({ loggedIn: true, member: true, owner: false });
     expect(b.joinCode).toBe('code000000000000');
-    expect(b.standings).toHaveLength(2);
+    expect(b.standings).toHaveLength(3);
+    // A private row has no name to show and no card to link to, whatever else it says.
+    expect(b.standings[2]).toMatchObject({ private: true, profilePublic: false, login: '', id: 0 });
+    expect(playerName(b.standings[2])).toBe('private');
+    expect(playerName(b.standings[0])).toBe('@alice');
+    expect(rowKey(b.standings[2], 2)).toBe('private-2');
+    expect(rowKey(b.standings[0], 0)).toBe('1');
     expect(b.standings[0].doors[0]).toEqual({ door: 1, points: 95, hints: 1, failedVerifies: 1 });
     expect(readBoard({ ...board, joinCode: undefined, countsUntil: null })).toMatchObject({ joinCode: null, countsUntil: null });
     expect(b.removed).toEqual([{ id: 4, login: 'mallory', removedAt: new Date('2026-12-02T10:00:00Z') }]);

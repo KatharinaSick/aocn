@@ -171,6 +171,47 @@ func TestPrivateLeaderboardIsOnlyForMembers(t *testing.T) {
 	}
 }
 
+// On a public board, people outside it see members whose card is private as "private": no
+// login, no ID. Members see everyone, and the owner is always named.
+func TestPublicLeaderboardLeavesOutPrivateMembers(t *testing.T) {
+	a := boardsAt(t)
+	ctx := context.Background()
+	b := a.create(t, alice, "KubeCon Crew")
+	a.join(t, b, bob)
+	a.join(t, b, carol)
+	a.makePublic(t, b, false)
+	// Bob's card is public; alice's and carol's aren't.
+	if err := a.users.SetPublic(ctx, bob, true); err != nil {
+		t.Fatal(err)
+	}
+	named := func(got boardResponse) map[string]bool {
+		logins := map[string]bool{}
+		for _, s := range got.Standings {
+			if s.Private != (s.Login == "") || s.Private != (s.ID == 0) {
+				t.Errorf("half private: %+v", s)
+			}
+			logins[s.Login] = true
+		}
+		return logins
+	}
+	for name, id := range map[string]int64{"logged out": 0, "not a member": mallory} {
+		rec := a.as(id, http.MethodGet, "/leaderboards/"+b.ID, "")
+		got := decode[boardResponse](t, rec, http.StatusOK)
+		if logins := named(got); len(got.Standings) != 3 || !logins["alice"] || !logins["Bob"] || logins["carol"] || !logins[""] {
+			t.Errorf("%s: %+v", name, got.Standings)
+		}
+		if strings.Contains(rec.Body.String(), "carol") || strings.Contains(rec.Body.String(), fmt.Sprint(carol)) {
+			t.Errorf("%s: gave carol away: %s", name, rec.Body.String())
+		}
+	}
+	for _, id := range []int64{alice, bob, carol} {
+		got := decode[boardResponse](t, a.as(id, http.MethodGet, "/leaderboards/"+b.ID, ""), http.StatusOK)
+		if logins := named(got); !logins["alice"] || !logins["Bob"] || !logins["carol"] {
+			t.Errorf("member %d: %+v", id, got.Standings)
+		}
+	}
+}
+
 // A public board is shown to anyone, but its invite link only to members.
 func TestPublicLeaderboard(t *testing.T) {
 	a := boardsAt(t)

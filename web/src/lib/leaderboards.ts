@@ -50,6 +50,11 @@ export interface Standing {
   avatarUrl: string;
   /** Whether their card may be linked to. */
   profilePublic: boolean;
+  /**
+   * Who they are is left out: their card is private, and you see a public board without
+   * being on it. id and login are empty then.
+   */
+  private: boolean;
   you: boolean;
   owner: boolean;
   points: number;
@@ -168,14 +173,15 @@ export function readMyBoards(b: Json): MyBoards | null {
 }
 
 function readStanding(s: unknown): Standing | null {
-  if (!isRecord(s) || !str(s.login)) return null;
+  if (!isRecord(s) || !(str(s.login) || bool(s.private))) return null;
   const doors = Array.isArray(s.doors) ? s.doors.filter(isRecord) : [];
   return {
     rank: num(s.rank),
-    id: num(s.id),
-    login: str(s.login),
+    id: bool(s.private) ? 0 : num(s.id),
+    login: bool(s.private) ? '' : str(s.login),
     avatarUrl: str(s.avatarUrl),
-    profilePublic: bool(s.profilePublic),
+    profilePublic: bool(s.profilePublic) && !bool(s.private),
+    private: bool(s.private),
     you: bool(s.you),
     owner: bool(s.owner),
     points: num(s.points),
@@ -296,6 +302,16 @@ export function cleanName(name: string): string | null {
     return null;
   }
   return trimmed;
+}
+
+/** A player as the board names them: "@alice", or "private" when it may not. */
+export function playerName(s: Pick<Standing, 'login' | 'private'>): string {
+  return s.private ? 'private' : `@${s.login}`;
+}
+
+/** What keeps a row apart from the others: its ID, or its place for private ones, which have none. */
+export function rowKey(s: Pick<Standing, 'id' | 'private'>, index: number): string {
+  return s.private ? `private-${index}` : String(s.id);
 }
 
 /** "#1 of 12". */

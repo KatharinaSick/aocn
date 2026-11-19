@@ -94,8 +94,8 @@ async function join() {
       <template v-else>
         <p class="leaderboardJoinPrivacy">
           Members see your GitHub name and your points.
-          <template v-if="state.preview.public">It's public, so anyone with its link sees them too.</template>
-          <template v-else>The owner can make this leaderboard public.</template>
+          <template v-if="state.preview.public">It's public, so anyone with its link sees your points too, and your name if your profile card is public.</template>
+          <template v-else>The owner can make this leaderboard public. Then anyone with its link sees your points too, and your name if your profile card is public.</template>
           You can leave any time.
         </p>
         <p v-if="state.loggedIn">

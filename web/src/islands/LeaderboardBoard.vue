@@ -20,8 +20,10 @@ import {
   formatDeadline,
   fromLocalInput,
   inviteUrl,
+  playerName,
   plural,
   readBoard,
+  rowKey,
   readNothing,
   toLocalInput,
   type Answer,
@@ -49,7 +51,7 @@ const say = (where: Where, text: string) => (message.value = { where, text });
 const busy = ref(false);
 
 // Which rows show their doors in words.
-const expanded = ref(new Set<number>());
+const expanded = ref(new Set<string>());
 // Two-step actions: what's waiting for a second click.
 const confirming = ref<'' | 'leave' | 'invite' | 'delete' | 'deadline'>('');
 const removing = ref<Standing | null>(null);
@@ -117,7 +119,7 @@ async function change<T>(where: Where, request: Promise<Answer<T>>, done: string
 const patch = (body: Record<string, unknown>, done: string) =>
   change('settings', callApi('PATCH', `/leaderboards/${id}`, readNothing, { body }), done);
 
-function toggle(row: number) {
+function toggle(row: string) {
   const next = new Set(expanded.value);
   if (next.has(row)) next.delete(row);
   else next.add(row);
@@ -252,7 +254,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
             join this leaderboard
           </button>
           <a v-else class="button button-primary" :href="loginHref(path)">log in with GitHub to join</a>
-          <span class="leaderboardBoardQuiet">Members see your GitHub name and your points, and so does anyone with this page's link.</span>
+          <span class="leaderboardBoardQuiet">Members see your GitHub name and your points. Anyone with this page's link sees your points too, and your name if your profile card is public.</span>
         </div>
         <p v-if="message.where === 'head'" class="leaderboardBoardMessage" role="status">{{ message.text }}</p>
       </section>
@@ -271,12 +273,12 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
               </tr>
             </thead>
             <tbody>
-              <template v-for="(row, i) in board.standings" :key="row.id">
+              <template v-for="(row, i) in board.standings" :key="rowKey(row, i)">
                 <tr :class="{ leaderboardBoardYou: row.you }">
                   <td class="leaderboardBoardRank">{{ row.rank }}</td>
                   <td class="leaderboardBoardPlayer">
                     <a v-if="row.profilePublic" :href="profileHref(row.login)">@{{ row.login }}</a>
-                    <span v-else>@{{ row.login }}</span>
+                    <span v-else :class="{ leaderboardBoardQuiet: row.private }">{{ playerName(row) }}</span>
                     <span v-if="row.you" class="leaderboardBoardTag"> · you</span>
                     <span v-if="row.owner" class="leaderboardBoardTag"> · owner</span>
                   </td>
@@ -284,9 +286,9 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
                     <button
                       class="leaderboardBoardStrip"
                       type="button"
-                      :aria-expanded="expanded.has(row.id)"
+                      :aria-expanded="expanded.has(rowKey(row, i))"
                       :aria-controls="`leaderboardBoardDoors${i}`"
-                      @click="toggle(row.id)"
+                      @click="toggle(rowKey(row, i))"
                     >
                       <span class="leaderboardBoardCells" aria-hidden="true">
                         <span
@@ -296,7 +298,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
                           :title="cell.label"
                         ></span>
                       </span>
-                      <span class="srOnly">{{ row.fixed }} of {{ counted }} doors fixed by @{{ row.login }}, details</span>
+                      <span class="srOnly">{{ row.fixed }} of {{ counted }} doors fixed by {{ playerName(row) }}, details</span>
                     </button>
                   </td>
                   <td class="leaderboardBoardNumber leaderboardBoardScore">
@@ -306,7 +308,7 @@ const counted = computed(() => board.value?.doors.filter((d) => d.counts).length
                     </span>
                   </td>
                 </tr>
-                <tr v-if="expanded.has(row.id)" :id="`leaderboardBoardDoors${i}`" class="leaderboardBoardDetails">
+                <tr v-if="expanded.has(rowKey(row, i))" :id="`leaderboardBoardDoors${i}`" class="leaderboardBoardDetails">
                   <td colspan="4">
                     <ul class="leaderboardBoardDoorList">
                       <li v-for="cell in strips[i].filter((c) => c.state !== 'closed')" :key="cell.door" :class="`leaderboardBoardDoorList-${cell.state}`">
