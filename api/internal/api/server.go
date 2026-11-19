@@ -42,7 +42,9 @@ func addRoutes(mux *http.ServeMux, log app.Logger, subscriptions Subscriptions, 
 	mux.Handle("GET /doors/{door}", handleDoorPage(log, doors))
 	mux.Handle("GET /doors/{door}/bundle", handleDoorBundle(log, doors))
 	mux.Handle("GET /doors/{door}/checks", handleDoorChecks(log, doors))
+	// Both need a signed-in player, and each opened hint is one row, at most three per door.
 	mux.Handle("GET /doors/{door}/hints", handleDoorHints(log, doors))
+	mux.Handle("POST /doors/{door}/hints/next", handleOpenHint(log, doors))
 	// Not limited either, for the same reason. Each run is one row; a door has no reason to
 	// be verified more than a few times a minute, so a limit per user is the first thing to
 	// add if anyone floods it.

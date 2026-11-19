@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/katharinasick/aocn/api/internal/github"
 	"github.com/katharinasick/aocn/api/internal/results"
 	"github.com/katharinasick/aocn/api/internal/schedule"
+	"github.com/katharinasick/aocn/api/internal/scoring"
 	"github.com/katharinasick/aocn/api/internal/session"
 	"github.com/katharinasick/aocn/api/internal/users"
 )
@@ -60,11 +60,11 @@ var uploaded = memoryStorage{
 	"doors/01/page.yaml":     "title: First\nstory: The story.\nmission: [First goal]\npola: First words.\nmaintainer: {name: First person, role: r, url: 'https://example.com/first'}\n",
 	"doors/01/bundle.tar.gz": "bundle 1",
 	"doors/01/checks.yaml":   "- ready: [first-ns]\n- job: first-ns/cronjob/first-job\n",
-	"doors/01/hints.yaml":    "- first-hint\n- second-hint\n",
+	"doors/01/hints.yaml":    "- first-hint\n- second-hint\n- third-hint\n",
 	"doors/03/page.yaml":     "title: Second\nstory: Secret.\nmission: [Secret goal]\npola: Secret words.\nmaintainer: {name: Secret person, role: r, url: 'https://example.com/secret'}\n",
 	"doors/03/bundle.tar.gz": "bundle 3",
 	"doors/03/checks.yaml":   "- ready: [secret-ns]\n- job: secret-ns/cronjob/secret-job\n",
-	"doors/03/hints.yaml":    "- secret-hint\n",
+	"doors/03/hints.yaml":    "- secret-hint\n- secret-hint-2\n- secret-hint-3\n",
 }
 
 // Everything a closed door must never give away, from uploaded.
@@ -137,10 +137,19 @@ func (f *fakeAccounts) Get(_ context.Context, id int64) (users.User, error) {
 	return users.User{}, users.ErrNotFound
 }
 
-// fakeResults keeps what was recorded.
+// fakeResults keeps what was recorded: runs and opened hints.
 type fakeResults struct {
 	recorded []recorded
+	hints    []openedHint
 	err      error
+	// progressDown fails reading, but not recording.
+	progressDown bool
+}
+
+type openedHint struct {
+	id          int64
+	door, index int
+	at          time.Time
 }
 
 type recorded struct {
@@ -156,10 +165,58 @@ func (f *fakeResults) Record(_ context.Context, user users.User, result results.
 	return nil
 }
 
+// OpenHint keeps hints in order, like the database.
+func (f *fakeResults) OpenHint(_ context.Context, id int64, door, index int, at time.Time) error {
+	if f.err != nil {
+		return f.err
+	}
+	opened := 0
+	for _, h := range f.hints {
+		if h.id == id && h.door == door {
+			if h.index == index {
+				return nil
+			}
+			opened++
+		}
+	}
+	if index != opened {
+		return results.ErrHintOutOfOrder
+	}
+	f.hints = append(f.hints, openedHint{id, door, index, at})
+	return nil
+}
+
+func (f *fakeResults) Progress(_ context.Context, ids []int64) (map[int64]scoring.Progress, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.progressDown {
+		return nil, errors.New("database is down")
+	}
+	progress := map[int64]scoring.Progress{}
+	for _, id := range ids {
+		p := scoring.Progress{Runs: map[int][]scoring.Run{}, Hints: map[int][]scoring.Hint{}}
+		for _, r := range f.recorded {
+			if r.user.GitHubID == id {
+				p.Runs[r.result.Door] = append(p.Runs[r.result.Door], scoring.Run{At: r.result.At, Passed: r.result.Passed, NotReady: r.result.NotReady && !r.result.Passed})
+			}
+		}
+		for _, h := range f.hints {
+			if h.id == id {
+				p.Hints[h.door] = append(p.Hints[h.door], scoring.Hint{Index: h.index, At: h.at})
+			}
+		}
+		progress[id] = p
+	}
+	return progress, nil
+}
+
 type testAPI struct {
 	http.Handler
 	accounts *fakeAccounts
 	results  *fakeResults
+	// clock is the API's time: tests may move it.
+	clock *time.Time
 }
 
 func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
@@ -168,7 +225,7 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := testAPI{accounts: &fakeAccounts{}, results: &fakeResults{}}
+	a := testAPI{accounts: &fakeAccounts{}, results: &fakeResults{}, clock: &now}
 	a.Handler = NewHandler(nopLogger{}, Subscriptions{}, Doors{
 		Schedule: sched,
 		Storage:  storage,
@@ -182,7 +239,7 @@ func doorsAt(t *testing.T, now time.Time, storage doors.Storage) testAPI {
 		},
 		Results:    a.results,
 		SessionKey: sessionKey,
-		Now:        func() time.Time { return now },
+		Now:        func() time.Time { return *a.clock },
 	}, Auth{}, Profiles{})
 	return a
 }
@@ -227,11 +284,16 @@ func TestClosedDoorsServeNothing(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := doorsAt(t, now, uploaded)
 			for _, path := range closedPaths {
-				// Signed out, and signed in as someone who isn't a previewer.
+				// Signed out, and signed in as someone who isn't a previewer. Hints need
+				// signing in whatever the door: signed out, that's a 401.
 				for _, token := range []string{"", playerToken} {
 					rec := getAs(h, path, token)
-					if rec.Code != http.StatusNotFound {
-						t.Errorf("%s as %q: status %d, want 404", path, token, rec.Code)
+					want := http.StatusNotFound
+					if token == "" && strings.HasSuffix(path, "/hints") {
+						want = http.StatusUnauthorized
+					}
+					if rec.Code != want {
+						t.Errorf("%s as %q: status %d, want %d", path, token, rec.Code, want)
 					}
 					assertNoSecrets(t, path, rec)
 				}
@@ -245,7 +307,7 @@ var closedPaths = []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/d
 
 func TestClosedDoorSaysWhenItOpens(t *testing.T) {
 	for _, path := range []string{"/doors/3", "/doors/3/bundle", "/doors/3/checks", "/doors/3/hints"} {
-		rec := get(doorsAt(t, door1OpensAt, uploaded), path)
+		rec := getAs(doorsAt(t, door1OpensAt, uploaded), path, playerToken)
 		var body closedResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("%s: %v", path, err)
@@ -286,17 +348,22 @@ func TestOpenDoorBundle(t *testing.T) {
 	}
 }
 
-func TestOpenDoorHints(t *testing.T) {
-	rec := get(doorsAt(t, door1OpensAt, uploaded), "/doors/1/hints")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+// Hints need signing in: each costs points, so the API has to know whose they are.
+func TestOpenDoorHintsNeedSignIn(t *testing.T) {
+	h := doorsAt(t, door1OpensAt, uploaded)
+	for name, rec := range map[string]*httptest.ResponseRecorder{
+		"list signed out": get(h, "/doors/1/hints"),
+		"list bad token":  getAs(h, "/doors/1/hints", "made-up"),
+		"open signed out": withAuthorization(h, http.MethodPost, "/doors/1/hints/next", "", `{"hint": 1}`),
+		"open bad token":  withAuthorization(h, http.MethodPost, "/doors/1/hints/next", "Bearer made-up", `{"hint": 1}`),
+	} {
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s: status %d, want 401", name, rec.Code)
+		}
+		assertNoSecrets(t, name, rec)
 	}
-	var body hintsResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Door != 1 || !slices.Equal(body.Hints, []string{"first-hint", "second-hint"}) {
-		t.Errorf("got %+v", body)
+	if len(h.results.hints) != 0 {
+		t.Errorf("opened %+v", h.results.hints)
 	}
 }
 
@@ -340,7 +407,7 @@ func TestUnknownDoors(t *testing.T) {
 func TestOpenDoorNotUploaded(t *testing.T) {
 	h := doorsAt(t, door1OpensAt, memoryStorage{})
 	for _, path := range []string{"/doors/1", "/doors/1/bundle", "/doors/1/checks", "/doors/1/hints"} {
-		rec := get(h, path)
+		rec := getAs(h, path, playerToken)
 		var body notReadyResponse
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusServiceUnavailable {
 			t.Fatalf("%s: status %d, %v", path, rec.Code, err)

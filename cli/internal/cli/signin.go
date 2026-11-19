@@ -47,8 +47,8 @@ func signIn(cmd *cobra.Command, ask bool) error {
 	}
 	s := screenHere()
 	if ask {
-		// From aocn verify, which the player ran to check their work, not to sign in.
-		fmt.Fprintln(out, "aocn verify saves your progress under your GitHub account, so sign in once for this station.")
+		// From aocn verify or aocn hint, which the player ran for something else.
+		fmt.Fprintln(out, "aocn saves your progress and the hints you open under your GitHub account, so sign in once for this station.")
 	}
 	fmt.Fprint(out, signInScreen(code, s))
 	if s.canOpen {

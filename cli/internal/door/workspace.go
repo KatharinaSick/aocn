@@ -28,10 +28,14 @@ const AsideDir = ".old"
 
 // stationOwn is what belongs to the station, not to the door in it: play/'s .gitignore and
 // README.md (the "your station is starting" page, which the door's README.md replaces), the
-// files aocn keeps its state in, and the files moved aside.
+// file aocn keeps its state in, and the files moved aside.
 var stationOwn = map[string]bool{
-	".gitignore": true, Readme: true, stateFile: true, seenFile: true, AsideDir: true,
+	".gitignore": true, Readme: true, stateFile: true, oldHintsFile: true, AsideDir: true,
 }
+
+// oldHintsFile is where aocn before 0.6.0 counted the hints it showed. The API keeps that
+// now, but a station from back then may still have it.
+const oldHintsFile = ".hints-seen.json"
 
 // Open is the door that runs in the cluster right now.
 type Open struct {
@@ -113,4 +117,14 @@ func Init(ctx context.Context, out io.Writer, folder string) error {
 		return fmt.Errorf("the door's %s/init.sh failed: %w", ToolDir, err)
 	}
 	return nil
+}
+
+// KindConfig returns the path of folder's .aocn/kind.yaml, or "" if the door runs on a plain
+// cluster.
+func KindConfig(folder string) string {
+	path := filepath.Join(folder, ToolDir, "kind.yaml")
+	if _, err := os.Stat(path); err != nil {
+		return ""
+	}
+	return path
 }

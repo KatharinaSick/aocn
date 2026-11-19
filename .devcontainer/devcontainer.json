@@ -22,12 +22,11 @@
     },
     "vscode": {
       "settings": {
-        // play/.gitignore keeps the door out of git, and aocn keeps which door is open and
-        // which hints it showed in the other two. Players don't need to see them.
+        // play/.gitignore keeps the door out of git, and aocn keeps which door is open in
+        // .open.json. Players don't need to see them.
         "files.exclude": {
           ".gitignore": true,
-          ".open.json": true,
-          ".hints-seen.json": true
+          ".open.json": true
         }
       }
     }

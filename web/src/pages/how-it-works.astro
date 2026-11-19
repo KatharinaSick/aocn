@@ -1,6 +1,6 @@
 ---
 // "how it works", written as a man page: what the calendar is, the story's premise, why
-// it matters, points, how to stay in the loop and what happens with your data. Nothing
+// it matters, points and fair play, how to stay in the loop and what happens with your data. Nothing
 // about what is behind a door, and nothing about the challenge tooling yet.
 import NotifyRow from '../components/NotifyRow.astro';
 import Keycap from '../components/Keycap.vue';
@@ -111,7 +111,8 @@ const glance = [
             <p>
               Fix what's broken, then run <code>aocn verify</code> in the terminal. It checks your fix against the
               live cluster and saves the result to your profile. Stuck?{' '}
-              <code>aocn hint</code> gives you a hint, each one a little more than the last.
+              <code>aocn hint</code> gives you a hint, each one a little more than the last. It tells you what a hint
+              costs before you see it.
             </p>
             <p>
               Rather play on your own machine? Every door page has a <strong class="manEmphasis">play locally</strong>{' '}
@@ -124,8 +125,28 @@ const glance = [
           <h2 class="manSectionName" id="man-points">points</h2>
           <div class="manSectionBody">
             <p>
-              Every solve earns points. You get a little less with each verification attempt and as time passes,{' '}
-              <strong class="manEmphasis">but you can join late and still catch up.</strong>
+              Every door you fix is worth <strong class="manEmphasis">100 points</strong>. Hints get more expensive as
+              they give away more: the first costs <strong class="manEmphasis">5</strong>, the second{' '}
+              <strong class="manEmphasis">15</strong>, the third <strong class="manEmphasis">30</strong>.
+            </p>
+            <p>
+              Verifying is free. Failed verifies don't cost points, but when two players have the same points, the one
+              with fewer failed verifies is ahead.
+            </p>
+            <p>
+              When you fix it doesn't matter. Fix door 1 on Christmas Day and it's worth as much as on December 1, so{' '}
+              <strong class="manEmphasis">you can join late and still catch up.</strong>
+            </p>
+          </div>
+        </section>
+
+        <section class="manSection" aria-labelledby="man-fair-play">
+          <h2 class="manSectionName" id="man-fair-play">fair play</h2>
+          <div class="manSectionBody">
+            <p>
+              There's no global leaderboard, on purpose. Everything runs in your own Codespace, so faking a result is
+              easy. It's also pointless: there's nothing to win, and the only people who'd see it are the people you're
+              playing with. Points are there to make playing together more fun, and they only are if they're real.
             </p>
           </div>
         </section>

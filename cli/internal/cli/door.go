@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -355,6 +356,9 @@ func save(cmd *cobra.Command, number int, outcomes []check.Outcome) {
 	out := cmd.OutOrStdout()
 	saved, err := api.SendResults(cmd.Context(), number, outcomes)
 	if err == nil && saved.Passed {
+		if saved.Score != nil {
+			fmt.Fprintln(out, scoreLine(number, *saved.Score))
+		}
 		fmt.Fprintf(out, "Saved for %s. Your card: %s\n", saved.Login, cardURL(saved.Login))
 		// Every door has its own Codespace, and each one keeps using the player's free storage
 		// until it's deleted.
@@ -374,13 +378,29 @@ func save(cmd *cobra.Command, number int, outcomes []check.Outcome) {
 }
 
 func newHintCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "hint",
-		Short: "Show the open door's next hint",
-		Long: `hint shows the open door's next hint. Each one gives away a little more, and asking
-again after the last one shows the last one again.`,
-		Args: cobra.NoArgs,
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "hint [N]",
+		Short: "Open the open door's next hint",
+		Long: `hint opens the open door's next hint. Each one gives away a little more than the last, and
+costs a little more: the first 5 points, the second 15, the third 30, of the 100 a door is
+worth. It asks before anything costs points. Hints come in order.
+
+Hints you opened are free to read again: aocn hint N shows hint N, and once all are open,
+aocn hint shows them all. Once you fixed the door, every hint is free.
+
+The hints you opened count for your GitHub account, in every Codespace, so the first time,
+it signs you in.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			want := 0
+			if len(args) == 1 {
+				n, err := strconv.Atoi(args[0])
+				if err != nil || n < 1 {
+					return fmt.Errorf("%q isn't a hint number. Hints are 1, 2, 3, …", args[0])
+				}
+				want = n
+			}
 			station, err := door.Station()
 			if err != nil {
 				return err
@@ -392,7 +412,10 @@ again after the last one shows the last one again.`,
 			if !ok {
 				return fmt.Errorf("no door is open yet. Start one with: aocn open 1")
 			}
-			hints, err := api.Hints(cmd.Context(), open.Number)
+			if err := ensureSignedIn(cmd); err != nil {
+				return err
+			}
+			state, err := api.Hints(cmd.Context(), open.Number)
 			if err != nil {
 				var closed *api.ClosedError
 				if errors.As(err, &closed) {
@@ -401,22 +424,102 @@ again after the last one shows the last one again.`,
 				return err
 			}
 			out := cmd.OutOrStdout()
-			if len(hints) == 0 {
+			if state.Total == 0 {
 				fmt.Fprintln(out, "This door has no hints.")
 				return nil
 			}
 
-			i, err := door.NextHint(station, open.Number, len(hints))
+			opened := len(state.Hints)
+			switch {
+			case want > state.Total:
+				return fmt.Errorf("door %d has %d hints", open.Number, state.Total)
+			case want > 0 && want <= opened:
+				printHint(out, want, state.Total, state.Hints[want-1])
+				return nil
+			case want > opened+1:
+				return fmt.Errorf("hints come in order: open hint %d first, with: aocn hint", opened+1)
+			case state.Next == nil:
+				fmt.Fprintf(out, "You opened all %d hints. Here they are again.\n", state.Total)
+				for i, h := range state.Hints {
+					fmt.Fprintln(out)
+					printHint(out, i+1, state.Total, h)
+				}
+				return nil
+			}
+
+			next := *state.Next
+			if next.Cost > 0 && !yes {
+				question := fmt.Sprintf("Hint %d of %d costs %d points.", next.Hint, state.Total, next.Cost)
+				if !term.IsTerminal(int(os.Stdin.Fd())) {
+					return fmt.Errorf("%s To open it, run: aocn hint --yes", question)
+				}
+				fmt.Fprintf(out, "%s Show it? [y/N] ", question)
+				answer, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+				if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
+					fmt.Fprintln(out, "Kept it closed. Nothing was spent.")
+					return nil
+				}
+				fmt.Fprintln(out)
+			}
+
+			state, cost, err := api.OpenHint(cmd.Context(), open.Number, next.Hint)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "💡 Hint %d of %d\n\n%s\n", i+1, len(hints), strings.TrimSpace(hints[i]))
-			if i == len(hints)-1 {
-				fmt.Fprintln(out, "\nThat's the last hint.")
-			}
+			printHint(out, next.Hint, state.Total, state.Hints[next.Hint-1])
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, hintCostLine(cost, state))
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "open the next hint without asking what it costs")
+	return cmd
+}
+
+// printHint shows hint number n (from 1) of total.
+func printHint(out io.Writer, n, total int, hint string) {
+	fmt.Fprintf(out, "💡 Hint %d of %d\n\n%s\n", n, total, strings.TrimSpace(hint))
+}
+
+// hintCostLine says what opening a hint cost, and what's left.
+func hintCostLine(cost int, state api.HintState) string {
+	var paid string
+	switch {
+	case cost > 0:
+		paid = fmt.Sprintf("That cost %d points.", cost)
+	case state.Preview:
+		paid = "Free: the door isn't open yet."
+	case state.Fixed:
+		paid = "Free: you fixed this door already."
+	default:
+		paid = "Free."
+	}
+	if state.Next == nil {
+		return paid + " That was the last hint."
+	}
+	return paid + " Stuck again? aocn hint opens the next one."
+}
+
+// scoreLine says what a fixed door is worth: "Door 3: 95 points (1 hint), 1 failed verify."
+func scoreLine(number int, s api.Score) string {
+	line := fmt.Sprintf("Door %d: %d points", number, s.Points)
+	if s.Hints > 0 {
+		line += fmt.Sprintf(" (%s)", plural(s.Hints, "hint", "hints"))
+	}
+	if s.FailedVerifies > 0 {
+		line += ", " + plural(s.FailedVerifies, "failed verify", "failed verifies")
+	}
+	if s.Preview {
+		line += ", once it opens"
+	}
+	return line + "."
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 func newVersionCmd(version string) *cobra.Command {

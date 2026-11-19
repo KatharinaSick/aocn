@@ -197,8 +197,8 @@ func TestMatchResultsKeepsTheChecksOrderAndShortensAnswers(t *testing.T) {
 		{ID: checks[1].ID, Passed: true, Got: long},
 		{ID: checks[0].ID, Passed: true},
 	}
-	ordered, passed, err := matchResults(checks, sent)
-	if err != nil || !passed {
+	ordered, passed, notReady, err := matchResults(checks, sent)
+	if err != nil || !passed || notReady {
 		t.Fatalf("passed %v, err %v", passed, err)
 	}
 	if ordered[0].ID != checks[0].ID || ordered[1].ID != checks[1].ID {
