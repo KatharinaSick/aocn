@@ -95,9 +95,66 @@ func TestParseChecksRefuses(t *testing.T) {
 	}
 }
 
+func TestParseChecksWithGoals(t *testing.T) {
+	checks, err := ParseChecks([]byte(`
+- ready: [apps]
+- goal: 2
+  checks:
+    - http: {method: GET, to: apps/api/items, from: apps/deploy/frontend, expect: 2xx}
+    - job: apps/cronjob/cleanup
+- goal: 1
+  checks:
+    - http: {method: GET, to: apps/api/items, from: apps/new-pod, expect: blocked}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var goals []int
+	for _, c := range checks {
+		goals = append(goals, c.Goal)
+	}
+	if len(checks) != 4 || goals[0] != 0 || goals[1] != 2 || goals[2] != 2 || goals[3] != 1 || checks[2].Job == "" {
+		t.Errorf("got %+v", checks)
+	}
+	// The same check under a goal or without one is the same check.
+	plain, _ := ParseChecks([]byte("- job: apps/cronjob/cleanup"))
+	if plain[0].ID != checks[2].ID {
+		t.Errorf("a goal changed the ID")
+	}
+	if err := Goals(checks, 2); err != nil {
+		t.Error(err)
+	}
+	if err := Goals(checks, 1); err == nil {
+		t.Error("goal 2 of a one-line mission passed")
+	}
+}
+
+func TestParseChecksRefusesBrokenGoals(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"no checks":       "- goal: 1\n  checks: []",
+		"no goal":         "- checks:\n    - job: a/cronjob/x",
+		"goal zero":       "- goal: 0\n  checks:\n    - job: a/cronjob/x",
+		"check beside":    "- goal: 1\n  job: a/cronjob/y\n  checks:\n    - job: a/cronjob/x",
+		"ready in a goal": "- goal: 1\n  checks:\n    - ready: [a]",
+		"nested goal":     "- goal: 1\n  checks:\n    - goal: 2\n      checks:\n        - job: a/cronjob/x",
+		"broken check":    "- goal: 1\n  checks:\n    - http: {method: GET}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if checks, err := ParseChecks([]byte(yaml)); err == nil {
+				t.Errorf("got %+v, want an error", checks)
+			}
+		})
+	}
+}
+
 func TestParseChecksNamesTheBrokenCheck(t *testing.T) {
 	_, err := ParseChecks([]byte("- job: apps/cronjob/x\n- http: {method: GET, to: a/b, from: a/new-pod, expect: ok}"))
 	if err == nil || !strings.Contains(err.Error(), "check 2") {
 		t.Errorf("got %v, want it to name check 2", err)
+	}
+	// Under a goal, it's named by its goal and its place there.
+	_, err = ParseChecks([]byte("- ready: [a]\n- goal: 2\n  checks:\n    - job: a/cronjob/x\n    - http: {method: GET}"))
+	if err == nil || !strings.Contains(err.Error(), "goal 2, check 2") {
+		t.Errorf("got %v, want it to name goal 2, check 2", err)
 	}
 }

@@ -3,7 +3,6 @@ package check
 import (
 	"context"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -12,13 +11,13 @@ import (
 
 // Job starts a run of the CronJob and passes if it completes. On failure it doesn't name the
 // CronJob, so finding it stays part of the challenge. The error is only for Ctrl+C.
-func Job(ctx context.Context, out io.Writer, cronJob Source) (Result, error) {
+func Job(ctx context.Context, cronJob Source) (Result, error) {
 	job := fmt.Sprintf("verify-%s-%d", cronJob.Name, time.Now().Unix())
 	if _, err := kubectl.Run(ctx, "create", "job", "-n", cronJob.Namespace, "--from=cronjob/"+cronJob.Name, job); err != nil {
 		if ctx.Err() != nil {
 			return Result{}, ctx.Err()
 		}
-		return report(out, Result{Got: err.Error()},
+		return said(Result{Got: err.Error()},
 			fmt.Sprintf("a scheduled job in %s couldn't start: %s", cronJob.Namespace, err)), nil
 	}
 	defer cleanup(func(ctx context.Context) {
@@ -37,9 +36,9 @@ func Job(ctx context.Context, out io.Writer, cronJob Source) (Result, error) {
 		r.Got = err.Error()
 	}
 	if succeeded {
-		return report(out, r, fmt.Sprintf("a fresh %s run completes", cronJob.Name)), nil
+		return said(r, fmt.Sprintf("a fresh %s run completes", cronJob.Name)), nil
 	}
-	return report(out, r, fmt.Sprintf("a scheduled job in %s doesn't complete", cronJob.Namespace)), nil
+	return said(r, fmt.Sprintf("a scheduled job in %s doesn't complete", cronJob.Namespace)), nil
 }
 
 // waitForJob returns whether the job succeeded, once it succeeded or failed or timeout passed.

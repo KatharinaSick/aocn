@@ -14,8 +14,8 @@
 //     verifies after that are free.
 //   - Failed verifies only count on doors you fixed.
 //   - A verify that stopped because the workloads weren't ready yet doesn't count.
-//   - What a previewer does before a door opens doesn't count: a pass from before the
-//     opening is a clean fix once the door opens.
+//   - A previewer's pass from before the opening is a fix once the door opens, and their
+//     failed verifies from before it don't count. Their hints cost like everyone's.
 //   - A leaderboard may have a deadline: a fix after it is worth nothing there.
 package scoring
 
@@ -97,18 +97,18 @@ func Score(opensAt, until time.Time, runs []Run, hints []Hint) Door {
 		return Door{}
 	}
 
-	// Only what happened between the opening and the first pass counts.
-	counts := func(at time.Time) bool { return !at.Before(opensAt) && at.Before(firstPass) }
+	// Failed verifies count between the opening and the first pass, hints up to the first
+	// pass: a previewer pays for theirs too.
 	d := Door{Fixed: true, FixedAt: fixedAt, Points: DoorPoints}
 	for _, r := range runs {
-		if !r.Passed && !r.NotReady && counts(r.At) {
+		if !r.Passed && !r.NotReady && !r.At.Before(opensAt) && r.At.Before(firstPass) {
 			d.FailedVerifies++
 		}
 	}
 	// Each hint once, however often it was recorded.
 	seen := map[int]bool{}
 	for _, h := range hints {
-		if seen[h.Index] || !counts(h.At) {
+		if seen[h.Index] || !h.At.Before(firstPass) {
 			continue
 		}
 		seen[h.Index] = true
@@ -118,22 +118,18 @@ func Score(opensAt, until time.Time, runs []Run, hints []Hint) Door {
 	return d
 }
 
-// NextHintCost is what opening the hint at index costs now: nothing before the door opens
-// (a previewer), nothing once the door is fixed, and its price otherwise.
-func NextHintCost(opensAt, now time.Time, fixed bool, index int) int {
-	if now.Before(opensAt) || fixed {
+// NextHintCost is what opening the hint at index costs now: nothing once the door is fixed,
+// and its price otherwise, also for a previewer before the door opens.
+func NextHintCost(fixed bool, index int) int {
+	if fixed {
 		return 0
 	}
 	return HintCost(index)
 }
 
-// HintCostAt is what a hint opened at at costs, given the door's runs: nothing before the
-// door opens (a previewer), nothing once it's fixed, its price otherwise. It agrees with Score,
-// which only counts hints opened from the opening up to the first pass.
-func HintCostAt(opensAt, at time.Time, runs []Run, index int) int {
-	if at.Before(opensAt) {
-		return 0
-	}
+// HintCostAt is what a hint opened at at costs, given the door's runs: nothing once it's
+// fixed, its price otherwise. It agrees with Score, which counts hints up to the first pass.
+func HintCostAt(at time.Time, runs []Run, index int) int {
 	for _, r := range runs {
 		if r.Passed && !r.At.After(at) {
 			return 0

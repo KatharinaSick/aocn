@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 	"time"
@@ -71,11 +72,20 @@ func TestHintCostLine(t *testing.T) {
 		{15, api.HintState{Next: next}, "That cost 15 points. Stuck again? aocn hint opens the next one."},
 		{30, api.HintState{}, "That cost 30 points. That was the last hint."},
 		{0, api.HintState{Next: next, Fixed: true}, "Free: you fixed this door already. Stuck again? aocn hint opens the next one."},
-		{0, api.HintState{Preview: true}, "Free: the door isn't open yet. That was the last hint."},
 	}
 	for _, tt := range tests {
 		if got := hintCostLine(tt.cost, tt.state); got != tt.want {
 			t.Errorf("%d, %+v: got %q, want %q", tt.cost, tt.state, got, tt.want)
 		}
+	}
+}
+
+// A hint is POLARIS-7's line: her name on the first line, the others under it.
+func TestPrintHint(t *testing.T) {
+	var out bytes.Buffer
+	printHint(&out, false, 2, 3, "\nFirst line.\n  a command\nLast line.\n")
+	want := "Hint 2 of 3\nPOLARIS-7 > First line.\n              a command\n            Last line.\n"
+	if out.String() != want {
+		t.Errorf("got\n%s\nwant\n%s", out.String(), want)
 	}
 }

@@ -59,7 +59,7 @@ func (failingReader) Read([]byte) (int, error) { return 0, errors.New("connectio
 var uploaded = memoryStorage{
 	"doors/01/page.yaml":     "title: First\nstory: The story.\nmission: [First goal]\npola: First words.\nmaintainer: {name: First person, role: r, url: 'https://example.com/first'}\n",
 	"doors/01/bundle.tar.gz": "bundle 1",
-	"doors/01/checks.yaml":   "- ready: [first-ns]\n- job: first-ns/cronjob/first-job\n",
+	"doors/01/checks.yaml":   "- ready: [first-ns]\n- goal: 1\n  checks:\n    - job: first-ns/cronjob/first-job\n",
 	"doors/01/hints.yaml":    "- first-hint\n- second-hint\n- third-hint\n",
 	"doors/03/page.yaml":     "title: Second\nstory: Secret.\nmission: [Secret goal]\npola: Secret words.\nmaintainer: {name: Secret person, role: r, url: 'https://example.com/secret'}\n",
 	"doors/03/bundle.tar.gz": "bundle 3",
@@ -450,5 +450,37 @@ func TestDoorResponsesAreNotCached(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A check comes with its goal's mission line, so aocn verify can show the goal instead.
+func TestChecksComeWithTheirGoal(t *testing.T) {
+	h := doorsAt(t, door1OpensAt, uploaded)
+	rec := getAs(h, "/doors/1/checks", "")
+	var got checksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status %d, %v", rec.Code, err)
+	}
+	if len(got.Checks) != 2 || got.Checks[0].Goal != "" || got.Checks[1].Goal != "First goal" || got.Checks[1].Job == "" {
+		t.Errorf("got %+v", got.Checks)
+	}
+}
+
+// Without the page, a check still shows its goal by number, never what it sends.
+func TestChecksWithoutThePageKeepTheirGoal(t *testing.T) {
+	storage := memoryStorage{}
+	for k, v := range uploaded {
+		if k != "doors/01/page.yaml" {
+			storage[k] = v
+		}
+	}
+	h := doorsAt(t, door1OpensAt, storage)
+	rec := getAs(h, "/doors/1/checks", "")
+	var got checksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status %d, %v", rec.Code, err)
+	}
+	if len(got.Checks) != 2 || got.Checks[0].Goal != "" || got.Checks[1].Goal != "Goal 1" {
+		t.Errorf("got %+v", got.Checks)
 	}
 }

@@ -42,7 +42,21 @@ func check(path string) error {
 	case "page.yaml":
 		_, err = doors.ParsePage(data)
 	case "checks.yaml":
-		_, err = doors.ParseChecks(data)
+		var checks []doors.Check
+		if checks, err = doors.ParseChecks(data); err != nil {
+			return err
+		}
+		// Goals are lines of the mission in the page.yaml next to it.
+		pageData, err := os.ReadFile(filepath.Join(filepath.Dir(path), "page.yaml"))
+		if err != nil {
+			return fmt.Errorf("its goals need the page.yaml next to it: %w", err)
+		}
+		page, err := doors.ParsePage(pageData)
+		if err != nil {
+			return fmt.Errorf("page.yaml: %w", err)
+		}
+		// Returned right here: since pageData, err := above, err is this case's own.
+		return doors.Goals(checks, len(page.Mission))
 	case "hints.yaml":
 		_, err = doors.ParseHints(data)
 	default:

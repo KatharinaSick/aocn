@@ -97,7 +97,7 @@ type hintsResponse struct {
 	Next *nextHint `json:"next,omitempty"`
 	// Fixed is whether they fixed the door: hints cost nothing from then on.
 	Fixed bool `json:"fixed"`
-	// Preview means the door isn't open: hints opened now cost nothing.
+	// Preview means the door isn't open yet. Hints cost the same.
 	Preview bool `json:"preview,omitempty"`
 }
 
@@ -116,8 +116,15 @@ type openedHintResponse struct {
 }
 
 type checksResponse struct {
-	Door   int           `json:"door"`
-	Checks []doors.Check `json:"checks"`
+	Door   int          `json:"door"`
+	Checks []checkToRun `json:"checks"`
+}
+
+// checkToRun is a check as aocn verify gets it: with its goal's mission line, which it shows
+// instead of the check.
+type checkToRun struct {
+	doors.Check
+	Goal string `json:"goal,omitempty"`
 }
 
 // previewHeader marks a bundle handed out only because the caller is a previewer, with when
@@ -281,7 +288,24 @@ func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 			writeMissingDoor(log, w, a.door, "checks", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, checksResponse{Door: a.door, Checks: checks})
+		var mission []string
+		if page, err := d.Pages.Get(r.Context(), a.door, d.now()); err == nil {
+			mission = page.Mission
+		} else {
+			log.Error("Reading the page for the checks' goals failed", "door", a.door, "error", err)
+		}
+		toRun := make([]checkToRun, len(checks))
+		for i, c := range checks {
+			toRun[i] = checkToRun{Check: c}
+			switch {
+			case c.Goal > 0 && c.Goal <= len(mission):
+				toRun[i].Goal = mission[c.Goal-1]
+			case c.Goal > 0:
+				// Without the page's line, the goal still hides what its checks send.
+				toRun[i].Goal = fmt.Sprintf("Goal %d", c.Goal)
+			}
+		}
+		writeJSON(w, http.StatusOK, checksResponse{Door: a.door, Checks: toRun})
 	})
 }
 
@@ -405,7 +429,7 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 		// which said what it cost.
 		cost := 0
 		if inserted {
-			cost = scoring.HintCostAt(a.opensAt, at, p.Runs[a.door], req.Hint-1)
+			cost = scoring.HintCostAt(at, p.Runs[a.door], req.Hint-1)
 			log.Info("Hint opened", "door", a.door, "hint", req.Hint, "github_user_id", a.callerID, "cost", cost)
 		}
 		writeJSON(w, http.StatusOK, openedHintResponse{hintsResponse: after, Cost: cost})
@@ -434,7 +458,7 @@ func (d Doors) hintStateOf(a access, all []string, p scoring.Progress) hintsResp
 		Preview: a.preview,
 	}
 	if opened < len(all) {
-		state.Next = &nextHint{Hint: opened + 1, Cost: scoring.NextHintCost(a.opensAt, d.now(), fixed, opened)}
+		state.Next = &nextHint{Hint: opened + 1, Cost: scoring.NextHintCost(fixed, opened)}
 	}
 	return state
 }

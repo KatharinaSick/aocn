@@ -71,13 +71,16 @@ func TestScore(t *testing.T) {
 			[]Run{notReady(h), notReady(h + time.Minute), failed(2 * h), passed(3 * h)}, nil,
 			Door{Fixed: true, FixedAt: at(3 * h), Points: 100, FailedVerifies: 1}},
 
-		// Previewers: what happens before the opening doesn't count.
-		{"a pass before the opening is a clean fix at the opening", time.Time{},
+		// Previewers: failed verifies before the opening don't count, hints do.
+		{"a pass before the opening is a fix at the opening, with its hints", time.Time{},
 			[]Run{failed(-3 * h), failed(-2 * h), passed(-h)}, []Hint{hint(0, -2*h), hint(1, -90*time.Minute)},
-			Door{Fixed: true, FixedAt: opensAt, Points: 100}},
-		{"hints before the opening are free, after it they cost", time.Time{},
+			Door{Fixed: true, FixedAt: opensAt, Points: 80, Hints: 2}},
+		{"hints before the opening cost like after it", time.Time{},
 			[]Run{failed(-h), failed(h), passed(2 * h)}, []Hint{hint(0, -h), hint(1, h)},
-			Door{Fixed: true, FixedAt: at(2 * h), Points: 85, Hints: 1, FailedVerifies: 1}},
+			Door{Fixed: true, FixedAt: at(2 * h), Points: 80, Hints: 2, FailedVerifies: 1}},
+		{"hints after a pass before the opening are free", time.Time{},
+			[]Run{passed(-2 * h)}, []Hint{hint(0, -h), hint(1, h)},
+			Door{Fixed: true, FixedAt: opensAt, Points: 100}},
 
 		// A leaderboard's deadline.
 		{"a fix before the deadline counts", at(5 * h), []Run{failed(h), passed(2 * h)}, []Hint{hint(0, h)},
@@ -106,22 +109,19 @@ func TestScore(t *testing.T) {
 func TestNextHintCost(t *testing.T) {
 	tests := []struct {
 		name  string
-		now   time.Time
 		fixed bool
 		index int
 		want  int
 	}{
-		{"first", at(time.Hour), false, 0, 5},
-		{"second", at(time.Hour), false, 1, 15},
-		{"third", at(time.Hour), false, 2, 30},
-		{"none left", at(time.Hour), false, 3, 0},
-		{"fixed", at(time.Hour), true, 1, 0},
-		{"before the opening", at(-time.Hour), false, 1, 0},
-		{"at the opening", opensAt, false, 0, 5},
+		{"first", false, 0, 5},
+		{"second", false, 1, 15},
+		{"third", false, 2, 30},
+		{"none left", false, 3, 0},
+		{"fixed", true, 1, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NextHintCost(opensAt, tt.now, tt.fixed, tt.index); got != tt.want {
+			if got := NextHintCost(tt.fixed, tt.index); got != tt.want {
 				t.Errorf("got %d, want %d", got, tt.want)
 			}
 		})
@@ -196,7 +196,7 @@ func TestRank(t *testing.T) {
 	}
 }
 
-// HintCostAt agrees with Score: free before the opening and from the first pass on.
+// HintCostAt agrees with Score: hints cost until the first pass, also before the opening.
 func TestHintCostAt(t *testing.T) {
 	opens := time.Date(2026, 12, 1, 5, 0, 0, 0, time.UTC)
 	pass := []Run{{At: opens.Add(time.Hour), Passed: false}, {At: opens.Add(2 * time.Hour), Passed: true}}
@@ -206,13 +206,13 @@ func TestHintCostAt(t *testing.T) {
 		runs []Run
 		want int
 	}{
-		{"before the opening", opens.Add(-time.Minute), nil, 0},
+		{"before the opening", opens.Add(-time.Minute), nil, 15},
 		{"at the opening", opens, nil, 15},
 		{"before the pass", opens.Add(90 * time.Minute), pass, 15},
 		{"at the pass", opens.Add(2 * time.Hour), pass, 0},
 		{"after the pass", opens.Add(3 * time.Hour), pass, 0},
 	} {
-		if got := HintCostAt(opens, c.at, c.runs, 1); got != c.want {
+		if got := HintCostAt(c.at, c.runs, 1); got != c.want {
 			t.Errorf("%s: %d, want %d", c.name, got, c.want)
 		}
 		// The same as Score charges, once the door is fixed.
