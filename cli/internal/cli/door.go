@@ -87,8 +87,13 @@ func openDoor(cmd *cobra.Command, number int, bundle string, reset bool) error {
 		}
 	}
 
+	total := 2
 	if bundle == "" {
-		downloaded, err := download(cmd, number)
+		total = 3
+	}
+	st := &steps{out: cmd.OutOrStdout(), styled: screenHere().styled, total: total}
+	if bundle == "" {
+		downloaded, err := download(cmd, st.next(fmt.Sprintf("Downloading door %d", number)), number)
 		if err != nil {
 			return err
 		}
@@ -130,17 +135,17 @@ func openDoor(cmd *cobra.Command, number int, bundle string, reset bool) error {
 		}
 	}
 
-	if err := cluster.Recreate(cmd.Context(), out, door.KindConfig(station)); err != nil {
+	if err := cluster.Recreate(cmd.Context(), st.next("Starting the station's cluster"), door.KindConfig(station)); err != nil {
 		return err
 	}
 	// Saved before init, so a restart picks the door up even if init failed.
 	if err := door.SaveOpen(station, door.Open{Number: number, Folder: folder}); err != nil {
 		return err
 	}
-	if err := door.Init(cmd.Context(), out, station); err != nil {
+	if err := door.Init(cmd.Context(), st.next(fmt.Sprintf("Setting up door %d", number)), station); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "\nDoor %d is open. README.md says where to start.\n", number)
+	st.done(fmt.Sprintf("Door %d is open. Start with README.md: it has your mission.", number))
 	return nil
 }
 
@@ -154,14 +159,13 @@ func otherDoor(open, asked int, doorsCodespace bool) error {
 	return fmt.Errorf("door %d is open here, and a station holds one door. Play door %d in its own Codespace, from %s, or replace door %d here with: aocn open %d --reset (its files are moved to .old/)", open, asked, page, open, asked)
 }
 
-// download fetches the door's bundle into a temporary file and returns its path. Before the
-// door opens, it says when to come back.
-func download(cmd *cobra.Command, number int) (string, error) {
+// download fetches the door's bundle into a temporary file and returns its path, and says
+// what it does on out. Before the door opens, it says when to come back.
+func download(cmd *cobra.Command, out io.Writer, number int) (string, error) {
 	f, err := os.CreateTemp("", fmt.Sprintf("aocn-door-%02d-*.tar.gz", number))
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Downloading door %d…\n", number)
 	preview, err := api.DownloadBundle(cmd.Context(), number, f)
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
@@ -179,7 +183,7 @@ func download(cmd *cobra.Command, number int) (string, error) {
 		return "", err
 	}
 	if !preview.OpensAt.IsZero() {
-		fmt.Fprintf(cmd.OutOrStdout(), "Preview: %s. You get it early because you're a previewer.\n",
+		fmt.Fprintf(out, "Preview: %s. You get it early because you're a previewer.\n",
 			&api.ClosedError{Door: number, OpensAt: preview.OpensAt})
 	}
 	return f.Name(), nil
@@ -236,11 +240,15 @@ door is open.`,
 				}
 				return openDoor(cmd, number, "", false)
 			}
-			out := cmd.OutOrStdout()
-			if err := cluster.Start(cmd.Context(), out, door.KindConfig(station)); err != nil {
+			st := &steps{out: cmd.OutOrStdout(), styled: screenHere().styled, total: 2}
+			if err := cluster.Start(cmd.Context(), st.next("Starting the station's cluster again"), door.KindConfig(station)); err != nil {
 				return err
 			}
-			return door.Init(cmd.Context(), out, station)
+			if err := door.Init(cmd.Context(), st.next("Setting up the door again"), station); err != nil {
+				return err
+			}
+			st.done("The station is back. Your files are as you left them.")
+			return nil
 		},
 	}
 }
