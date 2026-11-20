@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -205,7 +204,7 @@ func askReset(cmd *cobra.Command) bool {
 		return false
 	}
 	fmt.Fprint(out, "Continue with your files? Start over with n, your files are moved aside. [Y/n] ")
-	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	answer, _ := stdin.read(cmd.Context())
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "n")
 }
 
@@ -454,7 +453,7 @@ it signs you in.`,
 					return fmt.Errorf("%s To open it, run: aocn hint --yes", question)
 				}
 				fmt.Fprintf(out, "%s Show it? [y/N] ", question)
-				answer, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+				answer, _ := stdin.read(cmd.Context())
 				if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 					fmt.Fprintln(out, "Kept it closed. Nothing was spent.")
 					return nil

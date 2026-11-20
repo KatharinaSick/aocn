@@ -1,14 +1,13 @@
 package cli
 
 import (
-	"bufio"
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -77,21 +76,6 @@ func signInScreen(code auth.DeviceCode, s screen) string {
 	return b.String()
 }
 
-// waitForEnter waits until the player presses Enter, or ctx ends.
-func waitForEnter(ctx context.Context, in io.Reader) error {
-	pressed := make(chan struct{})
-	go func() {
-		_, _ = bufio.NewReader(in).ReadString('\n')
-		close(pressed)
-	}()
-	select {
-	case <-pressed:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
 // browserCommand is how to open a page here, or nil if aocn doesn't know. VS Code and
 // Codespaces set BROWSER to their own helper, which opens the page on the player's computer.
 // getenv and lookPath are os.Getenv and exec.LookPath outside of tests.
@@ -113,41 +97,72 @@ func browserCommand(getenv func(string) string, lookPath func(string) (string, e
 	return nil
 }
 
-// openBrowser opens url, and says so.
-func openBrowser(out io.Writer, url string) {
+// openBrowser opens url, and returns the line that says so.
+func openBrowser(url string) string {
 	command := browserCommand(os.Getenv, exec.LookPath)
 	page := strings.TrimPrefix(url, "https://")
 	if command == nil {
-		return
+		return fmt.Sprintf("     %sOpen %s yourself.%s", muted, page, reset)
 	}
 	if err := exec.Command(command[0], append(command[1:], url)...).Start(); err != nil {
-		fmt.Fprintf(out, "     %sCouldn't open a browser here. Open %s yourself.%s\n", muted, page, reset)
-		return
+		return fmt.Sprintf("     %sCouldn't open a browser here. Open %s yourself.%s", muted, page, reset)
 	}
-	fmt.Fprintf(out, "     %sOpened %s.%s\n", muted, page, reset)
+	return fmt.Sprintf("     %sOpened %s.%s", muted, page, reset)
 }
 
-// spin shows a spinner with text until the returned stop is called, which clears it again.
-func spin(out io.Writer, text string) (stop func()) {
-	done := make(chan struct{})
-	finished := make(chan struct{})
+// spinner shows that aocn is waiting: a turning wheel and a text on the last line.
+type spinner struct {
+	out   io.Writer
+	text  string
+	mu    sync.Mutex
+	done  chan struct{}
+	ended chan struct{}
+	over  bool
+}
+
+// spin shows a spinner with text until stop is called, which clears it again.
+func spin(out io.Writer, text string) *spinner {
+	sp := &spinner{out: out, text: text, done: make(chan struct{}), ended: make(chan struct{})}
 	go func() {
-		defer close(finished)
+		defer close(sp.ended)
 		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		for i := 0; ; i++ {
+			sp.mu.Lock()
 			fmt.Fprintf(out, "%s  %s%c%s %s", upLine, green, frames[i%len(frames)], reset, text)
+			sp.mu.Unlock()
 			select {
-			case <-done:
+			case <-sp.done:
 				fmt.Fprint(out, upLine)
 				return
 			case <-ticker.C:
 			}
 		}
 	}()
-	return func() {
-		close(done)
-		<-finished
+	return sp
+}
+
+// note prints line above the spinner, which keeps turning. The player's Enter moved the
+// cursor down a line, so the wheel left on the line above is cleared first.
+func (sp *spinner) note(line string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	if sp.over {
+		return
 	}
+	fmt.Fprintf(sp.out, "%s\x1b[1A%s%s\n", upLine, upLine, line)
+}
+
+// stop clears the spinner. Notes after it are dropped.
+func (sp *spinner) stop() {
+	sp.mu.Lock()
+	if sp.over {
+		sp.mu.Unlock()
+		return
+	}
+	sp.over = true
+	sp.mu.Unlock()
+	close(sp.done)
+	<-sp.ended
 }

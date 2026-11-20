@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -51,21 +51,27 @@ func signIn(cmd *cobra.Command, ask bool) error {
 		fmt.Fprintln(out, "aocn saves your progress and the hints you open under your GitHub account, so sign in once for this station.")
 	}
 	fmt.Fprint(out, signInScreen(code, s))
-	if s.canOpen {
-		if err := waitForEnter(cmd.Context(), os.Stdin); err != nil {
-			return err
-		}
-		openBrowser(out, code.VerificationURI)
-	}
-	var githubToken string
+	// aocn waits for GitHub right away, so a player who followed the link instead of pressing
+	// Enter is signed in all the same. Enter only opens the page.
+	note := func(line string) { fmt.Fprintln(out, line) }
+	stopSpinning := func() {}
 	if s.styled {
 		fmt.Fprintln(out)
-		stop := spin(out, "Waiting for you to confirm the code on GitHub…")
-		githubToken, err = auth.WaitForToken(cmd.Context(), code)
-		stop()
-	} else {
-		githubToken, err = auth.WaitForToken(cmd.Context(), code)
+		sp := spin(out, "Waiting for you to confirm the code on GitHub…")
+		note, stopSpinning = sp.note, sp.stop
 	}
+	waiting, stopWaiting := context.WithCancel(cmd.Context())
+	defer stopWaiting()
+	if s.canOpen {
+		go func() {
+			if _, err := stdin.read(waiting); err == nil {
+				note(openBrowser(code.VerificationURI))
+			}
+		}()
+	}
+	githubToken, err := auth.WaitForToken(cmd.Context(), code)
+	stopWaiting()
+	stopSpinning()
 	if err != nil {
 		return err
 	}
@@ -88,7 +94,7 @@ func createAccount(cmd *cobra.Command, githubToken string, ask bool) error {
 	fmt.Fprintf(out, "\n%s\n\n", accountNotice)
 	if ask {
 		fmt.Fprint(out, "Create your account and continue? [Y/n] ")
-		answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		answer, _ := stdin.read(cmd.Context())
 		if !agreed(answer) {
 			return errNotSignedIn
 		}
