@@ -331,8 +331,21 @@ gives you a hint. It works from any folder.`,
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Checking door %d. This takes a moment.\n", open.Number)
-			outcomes, err := check.Run(cmd.Context(), out, checks)
+			// The checks run at the same time and show once all are done, so a spinner says
+			// how far they got. The ready checks' lines go above it.
+			checksOut, progress, stop := io.Writer(out), func(int, int) {}, func() {}
+			if screenHere().styled {
+				fmt.Fprintln(out)
+				sp := spin(out, fmt.Sprintf("Checking door %d…", open.Number))
+				checksOut, stop = sp, sp.stop
+				progress = func(done, total int) {
+					sp.set(fmt.Sprintf("Checking door %d… %d of %d checks done", open.Number, done, total))
+				}
+			} else {
+				fmt.Fprintf(out, "Checking door %d. This takes a moment.\n", open.Number)
+			}
+			outcomes, err := check.Run(cmd.Context(), checksOut, checks, progress)
+			stop()
 			if err != nil {
 				return err
 			}

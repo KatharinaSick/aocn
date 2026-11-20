@@ -43,6 +43,11 @@ const NotRun = "not run"
 // step runs one check, once it's known what it is.
 type step func(ctx context.Context, f *Fixtures) (Result, error)
 
+// parallelChecks is how many checks run at the same time. Each starts a pod or a Job, and a
+// station's cluster is small: with too many at once, the network takes longer to apply their
+// policies than a probe waits, and a check would pass or fail for the wrong reason.
+const parallelChecks = 4
+
 // ran is a check's result, and whether it couldn't even start.
 type ran struct {
 	Result
@@ -53,12 +58,16 @@ type ran struct {
 // Run runs the checks and returns one outcome per check, in their order. Ready checks run
 // first, one after the other: if one fails, the rest would only fail because the workloads
 // are still starting, so they count as failed without running. All other checks run at the
-// same time, and are shown by goal once all are done. The error is only for Ctrl+C.
-func Run(ctx context.Context, out io.Writer, checks []Check) ([]Outcome, error) {
-	return run(ctx, out, checks, plan)
+// same time, and are shown by goal once all are done. While they run, progress (if not nil)
+// hears how many of them are done, from 0 of total on. The error is only for Ctrl+C.
+func Run(ctx context.Context, out io.Writer, checks []Check, progress func(done, total int)) ([]Outcome, error) {
+	return run(ctx, out, checks, plan, progress)
 }
 
-func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (step, error)) ([]Outcome, error) {
+func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (step, error), progress func(done, total int)) ([]Outcome, error) {
+	if progress == nil {
+		progress = func(int, int) {}
+	}
 	f := &Fixtures{}
 	defer f.Close()
 	results := make([]ran, len(checks))
@@ -78,9 +87,18 @@ func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (s
 		}
 	}
 
+	total, done := 0, 0
+	for _, c := range checks {
+		if c.Ready == nil {
+			total++
+		}
+	}
+	progress(0, total)
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var stopped error
+	slots := make(chan struct{}, parallelChecks)
 	for i, c := range checks {
 		if c.Ready != nil {
 			continue
@@ -88,6 +106,8 @@ func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (s
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
 			r, err := runOne(ctx, f, c, plan)
 			mu.Lock()
 			defer mu.Unlock()
@@ -96,6 +116,8 @@ func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (s
 				return
 			}
 			results[i] = r
+			done++
+			progress(done, total)
 		}()
 	}
 	wg.Wait()

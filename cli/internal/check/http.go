@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/katharinasick/aocn/cli/internal/kubectl"
@@ -131,13 +132,18 @@ spec:
 	return err
 }
 
+// testPods counts the test pods this aocn started, for their names.
+var testPods atomic.Int64
+
 // probeFromTestPod runs the probe in a new pod with labels (k=v,k=v) and deletes it after.
 func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs []string) (string, error) {
 	image, err := stationImage(ctx)
 	if err != nil {
 		return "", err
 	}
-	pod := fmt.Sprintf("%s-%d", fixtureName, rand.IntN(100000))
+	// The counter keeps the pods of one run apart, the random part apart from an earlier run's
+	// that may still be terminating.
+	pod := fmt.Sprintf("%s-%d-%d", fixtureName, rand.IntN(100000), testPods.Add(1))
 	// The delay gives the network time to apply the pod's policies before the request.
 	args := append([]string{"run", pod, "-n", namespace, "--image=" + image, "--restart=Never",
 		"--labels=" + labels + ",aocn-verify=probe", "--command", "--"}, probeArgs...)

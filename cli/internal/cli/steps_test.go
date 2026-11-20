@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"strings"
+	"sync"
 	"testing"
 )
 
@@ -30,4 +32,37 @@ func TestStepsCount(t *testing.T) {
 	if out.String() != want {
 		t.Errorf("got %q, want %q", out.String(), want)
 	}
+}
+
+// What's written to a spinner shows above it, one full line at a time, and what's left of an
+// unfinished line comes out when it stops.
+func TestSpinnerWritesAbove(t *testing.T) {
+	var out syncBuffer
+	sp := spin(&out, "waiting")
+	sp.Write([]byte("  ✅ ready"))
+	sp.Write([]byte("\nhalf"))
+	sp.set("still waiting")
+	sp.stop()
+	got := out.String()
+	if !strings.Contains(got, upLine+"  ✅ ready\n") || !strings.HasSuffix(got, upLine+"half") || !strings.Contains(got, "still waiting") {
+		t.Errorf("got %q", got)
+	}
+}
+
+// syncBuffer is a bytes.Buffer the spinner's goroutine and the test can share.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }

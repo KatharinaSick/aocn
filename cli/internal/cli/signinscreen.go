@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -110,37 +111,79 @@ func openBrowser(url string) string {
 	return fmt.Sprintf("     %sOpened %s.%s", muted, page, reset)
 }
 
-// spinner shows that aocn is waiting: a turning wheel and a text on the last line.
+// spinner shows that aocn is waiting: a turning wheel and a text on the last line. What's
+// written to it goes above the wheel, which keeps turning under it.
 type spinner struct {
 	out   io.Writer
-	text  string
 	mu    sync.Mutex
-	done  chan struct{}
-	ended chan struct{}
-	over  bool
+	text  string
+	frame int
+	// pending is what was written since the last full line, held back until its line ends.
+	pending []byte
+	done    chan struct{}
+	ended   chan struct{}
+	over    bool
 }
+
+var spinnerFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 
 // spin shows a spinner with text until stop is called, which clears it again.
 func spin(out io.Writer, text string) *spinner {
 	sp := &spinner{out: out, text: text, done: make(chan struct{}), ended: make(chan struct{})}
 	go func() {
 		defer close(sp.ended)
-		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
-		for i := 0; ; i++ {
+		for {
 			sp.mu.Lock()
-			fmt.Fprintf(out, "%s  %s%c%s %s", upLine, green, frames[i%len(frames)], reset, text)
+			sp.draw()
+			sp.frame++
 			sp.mu.Unlock()
 			select {
 			case <-sp.done:
-				fmt.Fprint(out, upLine)
 				return
 			case <-ticker.C:
 			}
 		}
 	}()
 	return sp
+}
+
+// draw shows the wheel and the text on the cursor's line. sp.mu is held.
+func (sp *spinner) draw() {
+	fmt.Fprintf(sp.out, "%s  %s%c%s %s", upLine, green, spinnerFrames[sp.frame%len(spinnerFrames)], reset, sp.text)
+}
+
+// set changes the spinner's text.
+func (sp *spinner) set(text string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.text = text
+	if !sp.over {
+		sp.draw()
+	}
+}
+
+// Write prints p's full lines above the spinner. A line that hasn't ended yet waits for the
+// rest, so the wheel never lands in the middle of it. After stop, it writes straight through.
+func (sp *spinner) Write(p []byte) (int, error) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	if sp.over {
+		return sp.out.Write(p)
+	}
+	sp.pending = append(sp.pending, p...)
+	i := bytes.LastIndexByte(sp.pending, '\n')
+	if i < 0 {
+		return len(p), nil
+	}
+	fmt.Fprint(sp.out, upLine)
+	if _, err := sp.out.Write(sp.pending[:i+1]); err != nil {
+		return 0, err
+	}
+	sp.pending = append(sp.pending[:0], sp.pending[i+1:]...)
+	sp.draw()
+	return len(p), nil
 }
 
 // note prints line above the spinner, which keeps turning. The player's Enter moved the
@@ -154,7 +197,8 @@ func (sp *spinner) note(line string) {
 	fmt.Fprintf(sp.out, "%s\x1b[1A%s%s\n", upLine, upLine, line)
 }
 
-// stop clears the spinner. Notes after it are dropped.
+// stop clears the spinner, and prints what was written to it without a line end yet. Notes
+// after it are dropped.
 func (sp *spinner) stop() {
 	sp.mu.Lock()
 	if sp.over {
@@ -165,4 +209,9 @@ func (sp *spinner) stop() {
 	sp.mu.Unlock()
 	close(sp.done)
 	<-sp.ended
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	fmt.Fprint(sp.out, upLine)
+	sp.out.Write(sp.pending)
+	sp.pending = nil
 }

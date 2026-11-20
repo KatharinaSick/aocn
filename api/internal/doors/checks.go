@@ -19,8 +19,8 @@ import (
 // Check is one check from a door's checks.yaml. Exactly one of Ready, HTTP and Job is set.
 // The CLI runs them, and sends back one result per ID.
 //
-//   - ready: [apps, db]        every Deployment in the namespaces is ready. If not, the
-//     checks after it don't run.
+//   - ready: [apps, db]        every Deployment in the namespaces is ready. Ready checks run
+//     first, and if one fails, the other checks don't run.
 //   - http: {method, to, from, expect, data}   a request from a workload
 //   - job: apps/cronjob/cleanup                a fresh run of the CronJob completes
 //
