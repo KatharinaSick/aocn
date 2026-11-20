@@ -441,7 +441,7 @@ it signs you in.`,
 			case want > state.Total:
 				return fmt.Errorf("door %d has %d hints", open.Number, state.Total)
 			case want > 0 && want <= opened:
-				printHint(out, want, state.Total, state.Hints[want-1])
+				printHint(out, screenHere().styled, want, state.Total, state.Hints[want-1])
 				return nil
 			case want > opened+1:
 				return fmt.Errorf("hints come in order: open hint %d first, with: aocn hint", opened+1)
@@ -449,7 +449,7 @@ it signs you in.`,
 				fmt.Fprintf(out, "You opened all %d hints. Here they are again.\n", state.Total)
 				for i, h := range state.Hints {
 					fmt.Fprintln(out)
-					printHint(out, i+1, state.Total, h)
+					printHint(out, screenHere().styled, i+1, state.Total, h)
 				}
 				return nil
 			}
@@ -473,7 +473,7 @@ it signs you in.`,
 			if err != nil {
 				return err
 			}
-			printHint(out, next.Hint, state.Total, state.Hints[next.Hint-1])
+			printHint(out, screenHere().styled, next.Hint, state.Total, state.Hints[next.Hint-1])
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, hintCostLine(cost, state))
 			return nil
@@ -483,9 +483,27 @@ it signs you in.`,
 	return cmd
 }
 
-// printHint shows hint number n (from 1) of total.
-func printHint(out io.Writer, n, total int, hint string) {
-	fmt.Fprintf(out, "💡 Hint %d of %d\n\n%s\n", n, total, strings.TrimSpace(hint))
+// printHint shows hint number n (from 1) of total. POLARIS-7 gives the hints, so it looks like
+// her line in the station's terminal: her name, a quiet ">", and what she says, every line
+// under the first.
+//
+//	Hint 1 of 3
+//	POLARIS-7 > The first line.
+//	            The second line.
+func printHint(out io.Writer, styled bool, n, total int, hint string) {
+	name, sep, title, end := "POLARIS-7", ">", fmt.Sprintf("Hint %d of %d", n, total), ""
+	if styled {
+		name, sep, title, end = bold+name+reset, muted+sep+reset, muted+title+reset, reset
+	}
+	fmt.Fprintf(out, "%s\n", title)
+	indent := strings.Repeat(" ", len("POLARIS-7 > "))
+	for i, line := range strings.Split(strings.TrimSpace(hint), "\n") {
+		if i == 0 {
+			fmt.Fprintf(out, "%s %s %s%s\n", name, sep, line, end)
+			continue
+		}
+		fmt.Fprintf(out, "%s%s\n", indent, line)
+	}
 }
 
 // hintCostLine says what opening a hint cost, and what's left.
