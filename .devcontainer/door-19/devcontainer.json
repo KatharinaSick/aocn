@@ -9,7 +9,7 @@
   // opens. On creation, it links play/README.md, the "your station is starting" page, to
   // door 19's page; git ignores that change, like the door's README later.
   "name": "Advent of Cloud Native · door 19",
-  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.2.3",
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.3.0",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/play",
   "containerEnv": {
     "AOCN_WORKSPACE": "/workspaces/${localWorkspaceFolderBasename}/play",
