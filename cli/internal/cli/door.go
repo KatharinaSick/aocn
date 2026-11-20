@@ -487,8 +487,6 @@ func hintCostLine(cost int, state api.HintState) string {
 	switch {
 	case cost > 0:
 		paid = fmt.Sprintf("That cost %d points.", cost)
-	case state.Preview:
-		paid = "Free: the door isn't open yet."
 	case state.Fixed:
 		paid = "Free: you fixed this door already."
 	default:

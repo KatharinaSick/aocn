@@ -71,7 +71,6 @@ func TestHintCostLine(t *testing.T) {
 		{15, api.HintState{Next: next}, "That cost 15 points. Stuck again? aocn hint opens the next one."},
 		{30, api.HintState{}, "That cost 30 points. That was the last hint."},
 		{0, api.HintState{Next: next, Fixed: true}, "Free: you fixed this door already. Stuck again? aocn hint opens the next one."},
-		{0, api.HintState{Preview: true}, "Free: the door isn't open yet. That was the last hint."},
 	}
 	for _, tt := range tests {
 		if got := hintCostLine(tt.cost, tt.state); got != tt.want {

@@ -110,8 +110,8 @@ func TestOpenHintRefusesNonsense(t *testing.T) {
 	}
 }
 
-// Hints of a closed door are a door's content like any other: only for its previewers, and
-// free for them.
+// Hints of a closed door are a door's content like any other: only for its previewers, who
+// pay for them like everyone.
 func TestHintsOfAClosedDoor(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
 	for _, token := range []string{playerToken, door3PreviewerToken} {
@@ -121,8 +121,8 @@ func TestHintsOfAClosedDoor(t *testing.T) {
 		}
 		assertNoSecrets(t, "closed door", rec)
 	}
-	opened := readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1, "cost": 0}`))
-	if opened.Cost != 0 || !opened.Preview || opened.Next.Cost != 0 {
+	opened := readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1, "cost": 5}`))
+	if opened.Cost != 5 || !opened.Preview || opened.Next.Cost != 15 {
 		t.Errorf("previewer: %+v", opened)
 	}
 }
@@ -224,20 +224,20 @@ func TestVerifyAnswersWithPoints(t *testing.T) {
 	}
 }
 
-// A previewer's pass before the opening is a clean fix once it opens.
+// A previewer's pass before the opening is a fix once it opens, and their hints cost.
 func TestVerifyPreviewAnswersWithPoints(t *testing.T) {
 	h := doorsAt(t, door1OpensAt.Add(-time.Hour), uploaded)
 	checks := door1Checks(t)
 	verifyAs(h, "1", previewerToken, []results.CheckResult{{ID: checks[0].ID, Passed: true}, {ID: checks[1].ID}})
 	*h.clock = h.clock.Add(time.Minute)
-	readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1, "cost": 0}`))
+	readOpened(t, openHint(h, "1", previewerToken, `{"hint": 1, "cost": 5}`))
 	*h.clock = h.clock.Add(time.Minute)
 	rec := verifyAs(h, "1", previewerToken, resultsFor(checks, true))
 	var body verifyResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Score == nil || *body.Score != (doorScore{Points: 100, Preview: true}) {
+	if body.Score == nil || *body.Score != (doorScore{Points: 95, Hints: 1, Preview: true}) {
 		t.Errorf("score %+v", body.Score)
 	}
 }

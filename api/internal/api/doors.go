@@ -97,7 +97,7 @@ type hintsResponse struct {
 	Next *nextHint `json:"next,omitempty"`
 	// Fixed is whether they fixed the door: hints cost nothing from then on.
 	Fixed bool `json:"fixed"`
-	// Preview means the door isn't open: hints opened now cost nothing.
+	// Preview means the door isn't open yet. Hints cost the same.
 	Preview bool `json:"preview,omitempty"`
 }
 
@@ -405,7 +405,7 @@ func handleOpenHint(log app.Logger, d Doors) http.Handler {
 		// which said what it cost.
 		cost := 0
 		if inserted {
-			cost = scoring.HintCostAt(a.opensAt, at, p.Runs[a.door], req.Hint-1)
+			cost = scoring.HintCostAt(at, p.Runs[a.door], req.Hint-1)
 			log.Info("Hint opened", "door", a.door, "hint", req.Hint, "github_user_id", a.callerID, "cost", cost)
 		}
 		writeJSON(w, http.StatusOK, openedHintResponse{hintsResponse: after, Cost: cost})
@@ -434,7 +434,7 @@ func (d Doors) hintStateOf(a access, all []string, p scoring.Progress) hintsResp
 		Preview: a.preview,
 	}
 	if opened < len(all) {
-		state.Next = &nextHint{Hint: opened + 1, Cost: scoring.NextHintCost(a.opensAt, d.now(), fixed, opened)}
+		state.Next = &nextHint{Hint: opened + 1, Cost: scoring.NextHintCost(fixed, opened)}
 	}
 	return state
 }

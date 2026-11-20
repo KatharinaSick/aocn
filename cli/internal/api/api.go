@@ -187,7 +187,7 @@ type HintState struct {
 	Next *NextHint `json:"next"`
 	// Fixed means the player fixed the door: hints are free from then on.
 	Fixed bool `json:"fixed"`
-	// Preview means the door isn't open yet: hints are free for a previewer.
+	// Preview means the door isn't open yet. Hints cost the same for a previewer.
 	Preview bool `json:"preview"`
 }
 
