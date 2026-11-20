@@ -116,8 +116,15 @@ type openedHintResponse struct {
 }
 
 type checksResponse struct {
-	Door   int           `json:"door"`
-	Checks []doors.Check `json:"checks"`
+	Door   int          `json:"door"`
+	Checks []checkToRun `json:"checks"`
+}
+
+// checkToRun is a check as aocn verify gets it: with its goal's mission line, which it shows
+// instead of the check.
+type checkToRun struct {
+	doors.Check
+	Goal string `json:"goal,omitempty"`
 }
 
 // previewHeader marks a bundle handed out only because the caller is a previewer, with when
@@ -281,7 +288,21 @@ func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 			writeMissingDoor(log, w, a.door, "checks", err)
 			return
 		}
-		writeJSON(w, http.StatusOK, checksResponse{Door: a.door, Checks: checks})
+		// Without the page, aocn verify shows each check instead of its goal.
+		var mission []string
+		if page, err := d.Pages.Get(r.Context(), a.door, d.now()); err == nil {
+			mission = page.Mission
+		} else {
+			log.Error("Reading the page for the checks' goals failed", "door", a.door, "error", err)
+		}
+		toRun := make([]checkToRun, len(checks))
+		for i, c := range checks {
+			toRun[i] = checkToRun{Check: c}
+			if c.Goal > 0 && c.Goal <= len(mission) {
+				toRun[i].Goal = mission[c.Goal-1]
+			}
+		}
+		writeJSON(w, http.StatusOK, checksResponse{Door: a.door, Checks: toRun})
 	})
 }
 

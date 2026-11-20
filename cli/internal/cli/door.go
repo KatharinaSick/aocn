@@ -323,7 +323,7 @@ gives you a hint. It works from any folder.`,
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Checking door %d. This takes about a minute.\n", open.Number)
+			fmt.Fprintf(out, "Checking door %d. This takes a moment.\n", open.Number)
 			outcomes, err := check.Run(cmd.Context(), out, checks)
 			if err != nil {
 				return err

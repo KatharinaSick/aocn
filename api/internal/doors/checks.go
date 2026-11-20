@@ -17,19 +17,37 @@ import (
 )
 
 // Check is one check from a door's checks.yaml. Exactly one of Ready, HTTP and Job is set.
-// The CLI runs them, in order, and sends back one result per ID.
+// The CLI runs them, and sends back one result per ID.
 //
 //   - ready: [apps, db]        every Deployment in the namespaces is ready. If not, the
 //     checks after it don't run.
 //   - http: {method, to, from, expect, data}   a request from a workload
 //   - job: apps/cronjob/cleanup                a fresh run of the CronJob completes
+//
+// Checks can be grouped under a line of the door's mission in page.yaml, by its number:
+//
+//   - goal: 1
+//     checks:
+//   - http: …
+//
+// aocn verify then shows one line per goal, not what each check sends, so it doesn't give the
+// solution away.
 type Check struct {
-	// ID is a hash of everything else, so a result names exactly the check it's for. Editing
-	// a check changes its ID.
+	// ID is a hash of the check itself, so a result names exactly the check it's for. Editing
+	// a check changes its ID. Moving it to another goal doesn't.
 	ID    string     `yaml:"-" json:"id,omitempty"`
 	Ready []string   `yaml:"ready,omitempty" json:"ready,omitempty"`
 	HTTP  *HTTPCheck `yaml:"http,omitempty" json:"http,omitempty"`
 	Job   string     `yaml:"job,omitempty" json:"job,omitempty"`
+	// Goal is the number of the mission line the check belongs to, from 1, or 0 for none.
+	Goal int `yaml:"-" json:"-"`
+}
+
+// entry is one item of checks.yaml: a check, or a goal with its checks.
+type entry struct {
+	Check  `yaml:",inline"`
+	Goal   int     `yaml:"goal,omitempty"`
+	Checks []Check `yaml:"checks,omitempty"`
 }
 
 // HTTPCheck sends a request from a workload and passes if the answer is the expected one.
@@ -50,10 +68,10 @@ var (
 // ParseChecks reads a checks.yaml: a list of checks, each with its ID set. Like page.yaml, an
 // unknown key is an error, so a typo can't quietly drop a check.
 func ParseChecks(data []byte) ([]Check, error) {
-	var checks []Check
+	var entries []entry
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
-	if err := decoder.Decode(&checks); err != nil {
+	if err := decoder.Decode(&entries); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, errors.New("checks.yaml is empty")
 		}
@@ -64,6 +82,27 @@ func ParseChecks(data []byte) ([]Check, error) {
 		return nil, errors.New("checks.yaml must be a single YAML document")
 	} else if !errors.Is(err, io.EOF) {
 		return nil, err
+	}
+	var checks []Check
+	for i, e := range entries {
+		switch {
+		case e.Goal == 0 && e.Checks == nil:
+			checks = append(checks, e.Check)
+		case e.Goal < 1:
+			return nil, fmt.Errorf("checks.yaml: item %d: checks need a goal, the number of a mission line in page.yaml", i+1)
+		case e.Ready != nil || e.HTTP != nil || e.Job != "":
+			return nil, fmt.Errorf("checks.yaml: item %d: a goal lists its checks under checks", i+1)
+		case len(e.Checks) == 0:
+			return nil, fmt.Errorf("checks.yaml: goal %d has no checks", e.Goal)
+		default:
+			for _, c := range e.Checks {
+				if c.Ready != nil {
+					return nil, fmt.Errorf("checks.yaml: goal %d: a ready check can't be part of a goal", e.Goal)
+				}
+				c.Goal = e.Goal
+				checks = append(checks, c)
+			}
+		}
 	}
 	if len(checks) == 0 {
 		return nil, errors.New("checks.yaml has no checks")
@@ -120,11 +159,12 @@ func (c Check) validate() error {
 	return nil
 }
 
-// hash is the check's ID: the first 16 hex digits of the SHA-256 of its JSON without the ID.
+// hash is the check's ID: the first 16 hex digits of the SHA-256 of its JSON without the ID
+// and the goal.
 // encoding/json writes struct fields in a fixed order, so the same check always hashes the
 // same.
 func (c Check) hash() string {
-	c.ID = ""
+	c.ID, c.Goal = "", 0
 	data, _ := json.Marshal(c) // a struct of strings can't fail
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])[:16]
@@ -153,4 +193,14 @@ func (c *Checks) Get(ctx context.Context, door int, now time.Time) ([]Check, err
 		}
 		return checks, nil
 	})
+}
+
+// Goals checks that every goal in checks is a line of the mission, which has lines lines.
+func Goals(checks []Check, lines int) error {
+	for _, c := range checks {
+		if c.Goal > lines {
+			return fmt.Errorf("checks.yaml: goal %d, but page.yaml's mission has %d lines", c.Goal, lines)
+		}
+	}
+	return nil
 }

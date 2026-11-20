@@ -1,18 +1,25 @@
 package check
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 )
 
-// fakePlan passes every check whose ID starts with "pass".
+// fakePlan passes every check whose ID starts with "pass". Checks run at the same time.
+var mu sync.Mutex
+
 func fakePlan(ran *[]string) func(Check) (step, error) {
 	return func(c Check) (step, error) {
-		return func(context.Context, io.Writer) (Result, error) {
+		return func(context.Context, *Fixtures) (Result, error) {
+			mu.Lock()
+			defer mu.Unlock()
 			*ran = append(*ran, c.ID)
-			return Result{Passed: strings.HasPrefix(c.ID, "pass")}, nil
+			return Result{Passed: strings.HasPrefix(c.ID, "pass"), Message: c.ID}, nil
 		}, nil
 	}
 }
@@ -94,5 +101,40 @@ func TestPlan(t *testing.T) {
 		if _, err := plan(c); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+}
+
+// Checks with a goal show as one line per goal, in the order the goals first come up, and
+// don't say what they sent. Checks without one show their own line.
+func TestRunShowsGoals(t *testing.T) {
+	var ran []string
+	checks := []Check{
+		{ID: "pass-ready", Ready: []string{"apps"}},
+		{ID: "pass-a", Job: "a", Goal: "First goal"},
+		{ID: "fail-b", Job: "b", Goal: "Second goal"},
+		{ID: "pass-c", Job: "c", Goal: "First goal"},
+		{ID: "pass-d", Job: "d", Goal: "Second goal"},
+		{ID: "fail-alone", Job: "e"},
+	}
+	var out bytes.Buffer
+	if _, err := run(context.Background(), &out, checks, fakePlan(&ran)); err != nil {
+		t.Fatal(err)
+	}
+	want := "  ✅ pass-ready\n  ✅ First goal\n  ❌ Second goal (1 of 2 checks failed)\n  ❌ fail-alone\n"
+	if out.String() != want {
+		t.Errorf("got\n%s\nwant\n%s", out.String(), want)
+	}
+}
+
+// A check that can't even start isn't the player's fault, so it says so under its goal.
+func TestRunNamesBrokenChecksInAGoal(t *testing.T) {
+	checks := []Check{{ID: "x", Goal: "A goal"}}
+	var out bytes.Buffer
+	broken := func(Check) (step, error) { return nil, errors.New("this check is broken") }
+	if _, err := run(context.Background(), &out, checks, broken); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "❌ A goal (1 of 1 checks failed)\n     this check is broken") {
+		t.Errorf("got %q", out.String())
 	}
 }

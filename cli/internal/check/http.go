@@ -3,7 +3,6 @@ package check
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -16,9 +15,10 @@ import (
 // error is only for Ctrl+C: everything else is a failed check.
 //
 // Requests are sent with the station binary's probe role: inside the Deployment's pod (same
-// identity as the workload), or from a short-lived test pod. Test pods, the test server and
-// their fixtures are created here and deleted before HTTP returns, also when ctx is cancelled.
-func HTTP(ctx context.Context, out io.Writer, method string, source Source, target Target, data string, expect Expect) (Result, error) {
+// identity as the workload), or from a short-lived test pod. Test pods are deleted before
+// HTTP returns, also when ctx is cancelled. The test server and the egress fixture come from
+// f, which deletes them once all checks are done.
+func HTTP(ctx context.Context, f *Fixtures, method string, source Source, target Target, data string, expect Expect) (Result, error) {
 	to := target.Service
 	if target.TestServer {
 		to = "a test server"
@@ -28,18 +28,13 @@ func HTTP(ctx context.Context, out io.Writer, method string, source Source, targ
 
 	answer, err := func() (string, error) {
 		if target.TestServer {
-			namespace, err := startTestServer(ctx)
-			if namespace != "" {
-				defer cleanup(func(ctx context.Context) {
-					kubectl.Run(ctx, "delete", "namespace", namespace, "--wait=false")
-				})
-			}
+			namespace, err := f.testServer(ctx)
 			if err != nil {
 				return "", err
 			}
 			target.Namespace = namespace
 		}
-		return probe(ctx, source, target, method, data)
+		return probe(ctx, f, source, target, method, data)
 	}()
 	if err != nil {
 		if ctx.Err() != nil {
@@ -49,14 +44,14 @@ func HTTP(ctx context.Context, out io.Writer, method string, source Source, targ
 	}
 	r := Result{Passed: err == nil && expect.Matches(answer), Got: answer}
 	if r.Passed {
-		return report(out, r, pass), nil
+		return said(r, pass), nil
 	}
-	return report(out, r, fmt.Sprintf("%s, but got: %s", fail, answer)), nil
+	return said(r, fmt.Sprintf("%s, but got: %s", fail, answer)), nil
 }
 
 // probe returns the probe's answer: the status ("200 OK"), or "error: ..." if the request
 // didn't get through. An error means the probe itself couldn't run.
-func probe(ctx context.Context, source Source, target Target, method, data string) (string, error) {
+func probe(ctx context.Context, f *Fixtures, source Source, target Target, method, data string) (string, error) {
 	probeArgs := []string{"/station", "--role", "probe", "--method", method, "--url", target.URL(), "--data", data}
 
 	switch source.Kind {
@@ -70,12 +65,9 @@ func probe(ctx context.Context, source Source, target Target, method, data strin
 			return probeFromTestPod(ctx, source.Namespace, "app="+fixtureName+"-plain", probeArgs)
 		}
 		// Elsewhere only the destination decides: the fixture opens the test pod's egress.
-		if err := applyEgressFixture(ctx, source.Namespace); err != nil {
+		if err := f.egress(ctx, source.Namespace); err != nil {
 			return "", err
 		}
-		defer cleanup(func(ctx context.Context) {
-			kubectl.Run(ctx, "delete", "networkpolicy", "-n", source.Namespace, fixtureName, "--ignore-not-found")
-		})
 		return probeFromTestPod(ctx, source.Namespace, "app="+fixtureName, probeArgs)
 
 	case KindCronJob:

@@ -61,7 +61,9 @@ it doesn't need. A new pod sends to it without the open egress it gets elsewhere
 			if err != nil {
 				return err
 			}
-			return failedIfNot(check.HTTP(cmd.Context(), cmd.OutOrStdout(), args[0], source, target, data, exp))
+			f := &check.Fixtures{}
+			defer f.Close()
+			return failedIfNot(cmd)(check.HTTP(cmd.Context(), f, args[0], source, target, data, exp))
 		},
 	}
 	cmd.Flags().StringVar(&from, "from", "", "the workload that sends the request")
@@ -85,7 +87,7 @@ name the CronJob, so finding it stays part of the challenge.`,
 			if err != nil || source.Kind != check.KindCronJob {
 				return fmt.Errorf("job must be NAMESPACE/cronjob/NAME, got %q", args[0])
 			}
-			return failedIfNot(check.Job(cmd.Context(), cmd.OutOrStdout(), source))
+			return failedIfNot(cmd)(check.Job(cmd.Context(), source))
 		},
 	}
 }
@@ -100,18 +102,22 @@ workloads are still starting.`,
 		Example: `  aocn check ready apps db`,
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return failedIfNot(check.Ready(cmd.Context(), cmd.OutOrStdout(), args))
+			return failedIfNot(cmd)(check.Ready(cmd.Context(), args))
 		},
 	}
 }
 
-// failedIfNot turns a check's result into the command's exit: 1 if it didn't pass.
-func failedIfNot(r check.Result, err error) error {
-	if err != nil {
-		return err
+// failedIfNot prints a check's line and turns its result into the command's exit: 1 if it
+// didn't pass.
+func failedIfNot(cmd *cobra.Command) func(check.Result, error) error {
+	return func(r check.Result, err error) error {
+		if err != nil {
+			return err
+		}
+		check.Print(cmd.OutOrStdout(), r)
+		if !r.Passed {
+			return check.ErrFailed
+		}
+		return nil
 	}
-	if !r.Passed {
-		return check.ErrFailed
-	}
-	return nil
 }
