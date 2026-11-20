@@ -465,3 +465,22 @@ func TestChecksComeWithTheirGoal(t *testing.T) {
 		t.Errorf("got %+v", got.Checks)
 	}
 }
+
+// Without the page, a check still shows its goal by number, never what it sends.
+func TestChecksWithoutThePageKeepTheirGoal(t *testing.T) {
+	storage := memoryStorage{}
+	for k, v := range uploaded {
+		if k != "doors/01/page.yaml" {
+			storage[k] = v
+		}
+	}
+	h := doorsAt(t, door1OpensAt, storage)
+	rec := getAs(h, "/doors/1/checks", "")
+	var got checksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status %d, %v", rec.Code, err)
+	}
+	if len(got.Checks) != 2 || got.Checks[0].Goal != "" || got.Checks[1].Goal != "Goal 1" {
+		t.Errorf("got %+v", got.Checks)
+	}
+}

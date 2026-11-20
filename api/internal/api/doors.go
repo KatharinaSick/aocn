@@ -288,7 +288,6 @@ func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 			writeMissingDoor(log, w, a.door, "checks", err)
 			return
 		}
-		// Without the page, aocn verify shows each check instead of its goal.
 		var mission []string
 		if page, err := d.Pages.Get(r.Context(), a.door, d.now()); err == nil {
 			mission = page.Mission
@@ -298,8 +297,12 @@ func handleDoorChecks(log app.Logger, d Doors) http.Handler {
 		toRun := make([]checkToRun, len(checks))
 		for i, c := range checks {
 			toRun[i] = checkToRun{Check: c}
-			if c.Goal > 0 && c.Goal <= len(mission) {
+			switch {
+			case c.Goal > 0 && c.Goal <= len(mission):
 				toRun[i].Goal = mission[c.Goal-1]
+			case c.Goal > 0:
+				// Without the page's line, the goal still hides what its checks send.
+				toRun[i].Goal = fmt.Sprintf("Goal %d", c.Goal)
 			}
 		}
 		writeJSON(w, http.StatusOK, checksResponse{Door: a.door, Checks: toRun})

@@ -83,11 +83,15 @@ func ParseChecks(data []byte) ([]Check, error) {
 	} else if !errors.Is(err, io.EOF) {
 		return nil, err
 	}
+	// where names each check as it's written in the file, for the errors below: "check 3" is
+	// the file's third item, "goal 2, check 1" the first check under a goal.
 	var checks []Check
+	var where []string
 	for i, e := range entries {
 		switch {
 		case e.Goal == 0 && e.Checks == nil:
 			checks = append(checks, e.Check)
+			where = append(where, fmt.Sprintf("check %d", i+1))
 		case e.Goal < 1:
 			return nil, fmt.Errorf("checks.yaml: item %d: checks need a goal, the number of a mission line in page.yaml", i+1)
 		case e.Ready != nil || e.HTTP != nil || e.Job != "":
@@ -95,12 +99,13 @@ func ParseChecks(data []byte) ([]Check, error) {
 		case len(e.Checks) == 0:
 			return nil, fmt.Errorf("checks.yaml: goal %d has no checks", e.Goal)
 		default:
-			for _, c := range e.Checks {
+			for j, c := range e.Checks {
 				if c.Ready != nil {
 					return nil, fmt.Errorf("checks.yaml: goal %d: a ready check can't be part of a goal", e.Goal)
 				}
 				c.Goal = e.Goal
 				checks = append(checks, c)
+				where = append(where, fmt.Sprintf("goal %d, check %d", e.Goal, j+1))
 			}
 		}
 	}
@@ -108,17 +113,17 @@ func ParseChecks(data []byte) ([]Check, error) {
 		return nil, errors.New("checks.yaml has no checks")
 	}
 
-	seen := map[string]int{}
+	seen := map[string]string{}
 	for i := range checks {
 		c := &checks[i]
 		if err := c.validate(); err != nil {
-			return nil, fmt.Errorf("checks.yaml: check %d: %w", i+1, err)
+			return nil, fmt.Errorf("checks.yaml: %s: %w", where[i], err)
 		}
 		c.ID = c.hash()
 		if first, ok := seen[c.ID]; ok {
-			return nil, fmt.Errorf("checks.yaml: check %d is the same as check %d", i+1, first)
+			return nil, fmt.Errorf("checks.yaml: %s is the same as %s", where[i], first)
 		}
-		seen[c.ID] = i + 1
+		seen[c.ID] = where[i]
 	}
 	return checks, nil
 }

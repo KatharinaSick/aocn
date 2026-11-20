@@ -152,4 +152,9 @@ func TestParseChecksNamesTheBrokenCheck(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "check 2") {
 		t.Errorf("got %v, want it to name check 2", err)
 	}
+	// Under a goal, it's named by its goal and its place there.
+	_, err = ParseChecks([]byte("- ready: [a]\n- goal: 2\n  checks:\n    - job: a/cronjob/x\n    - http: {method: GET}"))
+	if err == nil || !strings.Contains(err.Error(), "goal 2, check 2") {
+		t.Errorf("got %v, want it to name goal 2, check 2", err)
+	}
 }
