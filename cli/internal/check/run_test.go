@@ -211,3 +211,27 @@ func TestRunReportsProgress(t *testing.T) {
 		t.Errorf("progress %v, want 0 to 3", seen)
 	}
 }
+
+func TestGoals(t *testing.T) {
+	checks := []Check{
+		{ID: "r", Ready: []string{"a"}},
+		{ID: "1", Goal: "first"},
+		{ID: "2", Goal: "first"},
+		{ID: "3", Goal: "second"},
+		{ID: "4"},
+	}
+	outcomes := []Outcome{
+		{ID: "r", Passed: true},
+		{ID: "1", Passed: true},
+		{ID: "2", Passed: false},
+		{ID: "3", Passed: true},
+		{ID: "4", Passed: true},
+	}
+	if met, total := Goals(checks, outcomes); met != 2 || total != 3 {
+		t.Errorf("Goals = %d of %d, want 2 of 3", met, total)
+	}
+	outcomes[2].Passed = true
+	if met, total := Goals(checks, outcomes); met != 3 || total != 3 {
+		t.Errorf("Goals = %d of %d, want 3 of 3", met, total)
+	}
+}

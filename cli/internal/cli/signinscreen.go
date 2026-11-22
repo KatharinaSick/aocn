@@ -42,6 +42,7 @@ func screenHere() screen {
 const (
 	bold   = "\x1b[1m"
 	green  = "\x1b[32m"
+	amber  = "\x1b[33m"
 	muted  = "\x1b[90m"
 	under  = "\x1b[4m"
 	reset  = "\x1b[0m"

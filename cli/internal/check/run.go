@@ -250,3 +250,33 @@ func Failed(outcomes []Outcome) int {
 	}
 	return n
 }
+
+// Goals returns how many of the goals the checks belong to are met, and how many there are. A
+// goal is met when all its checks passed. A check without a goal counts as a goal of its own;
+// ready checks don't count.
+func Goals(checks []Check, outcomes []Outcome) (met, total int) {
+	passed := map[string]bool{}
+	var order []string
+	for i, c := range checks {
+		if c.Ready != nil {
+			continue
+		}
+		goal := c.Goal
+		if goal == "" {
+			goal = "check " + c.ID
+		}
+		if _, seen := passed[goal]; !seen {
+			order = append(order, goal)
+			passed[goal] = true
+		}
+		if i >= len(outcomes) || !outcomes[i].Passed {
+			passed[goal] = false
+		}
+	}
+	for _, g := range order {
+		if passed[g] {
+			met++
+		}
+	}
+	return met, len(order)
+}
