@@ -15,11 +15,9 @@
   // play/README.md says the station is starting, until the door's README.md replaces it. Git
   // ignores that change, so Source Control doesn't show a change nobody made on purpose.
   "postCreateCommand": "git update-index --skip-worktree README.md",
+  // No codespaces.openFiles: the image's workbench.startupEditor already opens play/README.md,
+  // in a Codespace and locally, and both would open it twice.
   "customizations": {
-    // Opens play/README.md when the Codespace is created, so it's the first thing players see.
-    "codespaces": {
-      "openFiles": ["play/README.md"]
-    },
     "vscode": {
       "settings": {
         // play/.gitignore keeps the door out of git, and aocn keeps which door is open in
