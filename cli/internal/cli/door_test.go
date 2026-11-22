@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/katharinasick/aocn/cli/internal/api"
 )
@@ -49,14 +51,14 @@ func TestScoreLine(t *testing.T) {
 		score api.Score
 		want  string
 	}{
-		{api.Score{Points: 100}, "Door 3: 100 points."},
-		{api.Score{Points: 95, Hints: 1, FailedVerifies: 1}, "Door 3: 95 points (1 hint), 1 failed verify."},
-		{api.Score{Points: 80, Hints: 2, FailedVerifies: 3}, "Door 3: 80 points (2 hints), 3 failed verifies."},
-		{api.Score{Points: 100, FailedVerifies: 2}, "Door 3: 100 points, 2 failed verifies."},
-		{api.Score{Points: 100, Preview: true}, "Door 3: 100 points, once it opens."},
+		{api.Score{Points: 100}, "100 points."},
+		{api.Score{Points: 95, Hints: 1, FailedVerifies: 1}, "95 points (1 hint), 1 failed verify."},
+		{api.Score{Points: 80, Hints: 2, FailedVerifies: 3}, "80 points (2 hints), 3 failed verifies."},
+		{api.Score{Points: 100, FailedVerifies: 2}, "100 points, 2 failed verifies."},
+		{api.Score{Points: 100, Preview: true}, "100 points, once it opens."},
 	}
 	for _, tt := range tests {
-		if got := scoreLine(3, tt.score); got != tt.want {
+		if got := scoreLine(tt.score); got != tt.want {
 			t.Errorf("%+v: got %q, want %q", tt.score, got, tt.want)
 		}
 	}
@@ -87,5 +89,30 @@ func TestPrintHint(t *testing.T) {
 	want := "Hint 2 of 3\nPOLARIS-7 > First line.\n              a command\n            Last line.\n"
 	if out.String() != want {
 		t.Errorf("got\n%s\nwant\n%s", out.String(), want)
+	}
+}
+
+func TestFixedBanner(t *testing.T) {
+	plainText := fixedBanner(12, false)
+	if plainText != "  Door 12 fixed! Every goal is met.\n" {
+		t.Errorf("plain: got %q", plainText)
+	}
+	// Every line of the frame is as wide as the others, with the party popper two columns.
+	styled := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(fixedBanner(12, true), "")
+	lines := strings.Split(strings.TrimSuffix(styled, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3: %q", len(lines), styled)
+	}
+	width := func(s string) int { return utf8.RuneCountInString(strings.ReplaceAll(s, "🎉", "🎉🎉")) }
+	for _, l := range lines[1:] {
+		if width(l) != width(lines[0]) {
+			t.Errorf("line %q is %d wide, the top %d", l, width(l), width(lines[0]))
+		}
+	}
+}
+
+func TestNotThereYet(t *testing.T) {
+	if got, want := notThereYet(1, 3, false), "  Not there yet: 1 of 3 goals met.\n  Stuck? Try aocn hint.\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

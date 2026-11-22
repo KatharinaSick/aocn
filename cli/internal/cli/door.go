@@ -334,12 +334,12 @@ gives you a hint. It works from any folder.`,
 			// The checks run at the same time and show once all are done, so a spinner says
 			// how far they got. The ready checks' lines go above it.
 			checksOut, progress, stop := io.Writer(out), func(int, int) {}, func() {}
-			if screenHere().styled {
-				fmt.Fprintln(out)
+			styled := screenHere().styled
+			if styled {
 				sp := spin(out, fmt.Sprintf("Checking door %d…", open.Number))
 				checksOut, stop = sp, sp.stop
 				progress = func(done, total int) {
-					sp.set(fmt.Sprintf("Checking door %d… %d of %d checks done", open.Number, done, total))
+					sp.set(fmt.Sprintf("Checking door %d   %s%d/%d%s", open.Number, muted, done, total, reset))
 				}
 			} else {
 				fmt.Fprintf(out, "Checking door %d. This takes a moment.\n", open.Number)
@@ -351,18 +351,16 @@ gives you a hint. It works from any folder.`,
 			}
 
 			failed := check.Failed(outcomes)
+			met, goals := check.Goals(checks, outcomes)
 			fmt.Fprintln(out)
-			switch failed {
-			case 0:
-				fmt.Fprintln(out, "All checks passed.")
-			case 1:
-				fmt.Fprintln(out, "Not there yet: 1 check failed. Stuck? Try aocn hint.")
-			default:
-				fmt.Fprintf(out, "Not there yet: %d checks failed. Stuck? Try aocn hint.\n", failed)
+			if failed == 0 && met == goals {
+				fmt.Fprint(out, fixedBanner(open.Number, styled))
+			} else {
+				fmt.Fprint(out, notThereYet(met, goals, styled))
 			}
 
-			save(cmd, open.Number, outcomes)
-			if failed > 0 {
+			save(cmd, open.Number, outcomes, styled)
+			if failed > 0 || met < goals {
 				return check.ErrFailed
 			}
 			return nil
@@ -370,31 +368,77 @@ gives you a hint. It works from any folder.`,
 	}
 }
 
+// fixedBanner is what verify says when every goal is met, framed so it stands out:
+//
+//	╭──────────────────────────────────────╮
+//	│  🎉  Door 1 fixed! Every goal is met.  │
+//	╰──────────────────────────────────────╯
+func fixedBanner(number int, styled bool) string {
+	text := fmt.Sprintf("Door %d fixed! Every goal is met.", number)
+	if !styled {
+		return "  " + text + "\n"
+	}
+	// The party popper is two columns wide, and gets two spaces after it.
+	width := len("  ") + 2 + len("  ") + len(text) + len("  ")
+	line := strings.Repeat("─", width)
+	return fmt.Sprintf("  %s╭%s╮\n  │  🎉  %s%s%s%s  │\n  ╰%s╯%s\n",
+		green, line, bold, text, reset, green, line, reset)
+}
+
+// notThereYet says how many goals are met, and where to get help.
+//
+//	Not there yet: 1 of 3 goals met.
+//	Stuck? Try aocn hint.
+func notThereYet(met, goals int, styled bool) string {
+	head, tail := "Not there yet:", ""
+	if styled {
+		head, tail = bold+amber+head+reset, muted
+	}
+	return fmt.Sprintf("  %s %d of %s met.\n  %sStuck? Try aocn hint.%s\n",
+		head, met, plural(goals, "goal", "goals"), tail, endStyle(styled))
+}
+
+// endStyle is reset in a styled terminal, and nothing elsewhere.
+func endStyle(styled bool) string {
+	if styled {
+		return reset
+	}
+	return ""
+}
+
 // save sends a run to the API, so it counts for the player's GitHub account. Whether it
 // worked never changes what verify found, so a problem here is a note, not an error.
-func save(cmd *cobra.Command, number int, outcomes []check.Outcome) {
+func save(cmd *cobra.Command, number int, outcomes []check.Outcome, styled bool) {
 	out := cmd.OutOrStdout()
 	saved, err := api.SendResults(cmd.Context(), number, outcomes)
 	if err == nil && saved.Passed {
 		if saved.Score != nil {
-			fmt.Fprintln(out, scoreLine(number, *saved.Score))
+			star := "★"
+			if styled {
+				star = bold + amber + star + reset
+			}
+			fmt.Fprintf(out, "  %s %s\n", star, scoreLine(*saved.Score))
 		}
-		fmt.Fprintf(out, "Saved for %s. Your card: %s\n", saved.Login, cardURL(saved.Login))
+		fmt.Fprintf(out, "  Saved for %s. Your card: %s\n", saved.Login, cardURL(saved.Login))
 		// Every door has its own Codespace, and each one keeps using the player's free storage
 		// until it's deleted.
 		if os.Getenv("CODESPACES") == "true" {
-			fmt.Fprintln(out, "Done with this door? Delete this Codespace at https://github.com/codespaces, so it doesn't use up your free storage.")
+			start := ""
+			if styled {
+				start = muted
+			}
+			fmt.Fprintf(out, "\n  %sDone with this door? Delete this Codespace at https://github.com/codespaces,\n  so it doesn't use up your free storage.%s\n", start, endStyle(styled))
 		}
 		return
 	}
 	if err == nil {
-		fmt.Fprintf(out, "Saved for %s.\n", saved.Login)
+		fmt.Fprintf(out, "  Saved for %s.\n", saved.Login)
 		return
 	}
 	if cmd.Context().Err() != nil {
 		return
 	}
-	fmt.Fprintf(out, "Not saved: %v\n", err)
+	fmt.Fprintf(out, "  Not saved: %v\n", err)
 }
 
 func newHintCmd() *cobra.Command {
@@ -459,7 +503,7 @@ it signs you in.`,
 			case want > opened+1:
 				return fmt.Errorf("hints come in order: open hint %d first, with: aocn hint", opened+1)
 			case state.Next == nil:
-				fmt.Fprintf(out, "You opened all %d hints. Here they are again.\n", state.Total)
+				fmt.Fprintf(out, "You already opened all %d hints. Here they are again.\n", state.Total)
 				for i, h := range state.Hints {
 					fmt.Fprintln(out)
 					printHint(out, screenHere().styled, i+1, state.Total, h)
@@ -536,9 +580,10 @@ func hintCostLine(cost int, state api.HintState) string {
 	return paid + " Stuck again? aocn hint opens the next one."
 }
 
-// scoreLine says what a fixed door is worth: "Door 3: 95 points (1 hint), 1 failed verify."
-func scoreLine(number int, s api.Score) string {
-	line := fmt.Sprintf("Door %d: %d points", number, s.Points)
+// scoreLine says what a fixed door is worth: "95 points (1 hint), 1 failed verify." The
+// banner above it already names the door.
+func scoreLine(s api.Score) string {
+	line := fmt.Sprintf("%d points", s.Points)
 	if s.Hints > 0 {
 		line += fmt.Sprintf(" (%s)", plural(s.Hints, "hint", "hints"))
 	}
