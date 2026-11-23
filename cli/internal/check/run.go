@@ -59,12 +59,13 @@ type ran struct {
 // first, one after the other: if one fails, the rest would only fail because the workloads
 // are still starting, so they count as failed without running. All other checks run at the
 // same time, and are shown by goal once all are done. While they run, progress (if not nil)
-// hears how many of them are done, from 0 of total on. The error is only for Ctrl+C.
-func Run(ctx context.Context, out io.Writer, checks []Check, progress func(done, total int)) ([]Outcome, error) {
-	return run(ctx, out, checks, plan, progress)
+// hears how many of them are done, from 0 of total on. styled is for a terminal: a passed
+// ready check's line is muted there. The error is only for Ctrl+C.
+func Run(ctx context.Context, out io.Writer, checks []Check, progress func(done, total int), styled bool) ([]Outcome, error) {
+	return run(ctx, out, checks, plan, progress, styled)
 }
 
-func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (step, error), progress func(done, total int)) ([]Outcome, error) {
+func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (step, error), progress func(done, total int), styled bool) ([]Outcome, error) {
 	if progress == nil {
 		progress = func(int, int) {}
 	}
@@ -81,10 +82,11 @@ func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (s
 			return nil, err
 		}
 		results[i] = r
-		Print(out, r.Result)
 		if !r.Passed {
+			Print(out, r.Result)
 			return outcomes(checks, results), nil
 		}
+		printReady(out, r.Message, styled)
 	}
 
 	total, done := 0, 0
@@ -126,6 +128,17 @@ func run(ctx context.Context, out io.Writer, checks []Check, plan func(Check) (s
 	}
 	show(out, checks, results)
 	return outcomes(checks, results), nil
+}
+
+// printReady prints a passed ready check's line. It isn't a goal, so it gets a plain ✓ and,
+// in a terminal, is muted: the ✅ are only for the goals the player counts in "1 of 3 goals
+// met".
+func printReady(out io.Writer, line string, styled bool) {
+	if styled {
+		fmt.Fprintf(out, "  \x1b[90m✓ %s\x1b[0m\n", line)
+		return
+	}
+	fmt.Fprintf(out, "  ✓ %s\n", line)
 }
 
 // runOne runs one check. A check that can't be planned didn't pass, and says why.

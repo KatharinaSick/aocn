@@ -344,7 +344,7 @@ gives you a hint. It works from any folder.`,
 			} else {
 				fmt.Fprintf(out, "Checking door %d. This takes a moment.\n", open.Number)
 			}
-			outcomes, err := check.Run(cmd.Context(), checksOut, checks, progress)
+			outcomes, err := check.Run(cmd.Context(), checksOut, checks, progress, styled)
 			stop()
 			if err != nil {
 				return err

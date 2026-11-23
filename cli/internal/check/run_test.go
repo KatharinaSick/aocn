@@ -28,7 +28,7 @@ func fakePlan(ran *[]string) func(Check) (step, error) {
 func TestRunGivesEveryCheckAnOutcome(t *testing.T) {
 	var ran []string
 	checks := []Check{{ID: "pass-ready", Ready: []string{"apps"}}, {ID: "pass-1", Job: "x"}, {ID: "fail-2", Job: "y"}}
-	outcomes, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), nil)
+	outcomes, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestRunGivesEveryCheckAnOutcome(t *testing.T) {
 func TestRunStopsAfterAFailedReadyCheck(t *testing.T) {
 	var ran []string
 	checks := []Check{{ID: "fail-ready", Ready: []string{"apps"}}, {ID: "pass-1", Job: "x"}, {ID: "pass-2", Job: "y"}}
-	outcomes, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), nil)
+	outcomes, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestRunStopsAfterAFailedReadyCheck(t *testing.T) {
 func TestRunGoesOnAfterOtherFailures(t *testing.T) {
 	var ran []string
 	checks := []Check{{ID: "fail-1", Job: "x"}, {ID: "pass-2", Job: "y"}}
-	if _, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), nil); err != nil {
+	if _, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(ran) != 2 {
@@ -118,12 +118,26 @@ func TestRunShowsGoals(t *testing.T) {
 		{ID: "fail-alone", Job: "e"},
 	}
 	var out bytes.Buffer
-	if _, err := run(context.Background(), &out, checks, fakePlan(&ran), nil); err != nil {
+	if _, err := run(context.Background(), &out, checks, fakePlan(&ran), nil, false); err != nil {
 		t.Fatal(err)
 	}
-	want := "  ✅ pass-ready\n  ✅ First goal\n  ❌ Second goal (1 of 2 checks failed)\n  ❌ fail-alone\n"
+	want := "  ✓ pass-ready\n  ✅ First goal\n  ❌ Second goal (1 of 2 checks failed)\n  ❌ fail-alone\n"
 	if out.String() != want {
 		t.Errorf("got\n%s\nwant\n%s", out.String(), want)
+	}
+}
+
+// A passed ready check isn't a goal: in a terminal its line is muted, with a plain ✓.
+func TestRunMutesReadyChecks(t *testing.T) {
+	var ran []string
+	checks := []Check{{ID: "pass-ready", Ready: []string{"apps"}}, {ID: "pass-a", Job: "a", Goal: "A goal"}}
+	var out bytes.Buffer
+	if _, err := run(context.Background(), &out, checks, fakePlan(&ran), nil, true); err != nil {
+		t.Fatal(err)
+	}
+	want := "  \x1b[90m✓ pass-ready\x1b[0m\n  ✅ A goal\n"
+	if out.String() != want {
+		t.Errorf("got %q, want %q", out.String(), want)
 	}
 }
 
@@ -132,7 +146,7 @@ func TestRunNamesBrokenChecksInAGoal(t *testing.T) {
 	checks := []Check{{ID: "x", Goal: "A goal"}}
 	var out bytes.Buffer
 	broken := func(Check) (step, error) { return nil, errors.New("this check is broken") }
-	if _, err := run(context.Background(), &out, checks, broken, nil); err != nil {
+	if _, err := run(context.Background(), &out, checks, broken, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "❌ A goal (1 of 1 checks failed)\n     this check is broken") {
@@ -164,7 +178,7 @@ func TestRunLimitsHowManyRunAtOnce(t *testing.T) {
 	}
 	done := make(chan error)
 	go func() {
-		_, err := run(context.Background(), io.Discard, checks, plan, nil)
+		_, err := run(context.Background(), io.Discard, checks, plan, nil, false)
 		done <- err
 	}()
 	// The first ones fill every slot, and wait there. Then all are let through.
@@ -204,7 +218,7 @@ func TestRunReportsProgress(t *testing.T) {
 		}
 		seen = append(seen, done)
 	}
-	if _, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), progress); err != nil {
+	if _, err := run(context.Background(), io.Discard, checks, fakePlan(&ran), progress, false); err != nil {
 		t.Fatal(err)
 	}
 	if len(seen) != 4 || seen[0] != 0 || seen[3] != 3 {
