@@ -26,7 +26,7 @@ Workloads are named NAMESPACE/KIND/NAME, like kubectl does:
 		Hidden: true,
 	}
 
-	cmd.AddCommand(newCheckHTTPCmd(), newCheckJobCmd(), newCheckReadyCmd())
+	cmd.AddCommand(newCheckHTTPCmd(), newCheckLoginCmd(), newCheckJobCmd(), newCheckReadyCmd())
 	return cmd
 }
 
@@ -69,6 +69,54 @@ it doesn't need. A new pod sends to it without the open egress it gets elsewhere
 	cmd.Flags().StringVar(&from, "from", "", "the workload that sends the request")
 	cmd.Flags().StringVar(&expect, "expect", "", "the expected result: a status code, a class like 2xx, or blocked")
 	cmd.Flags().StringVar(&data, "data", "", "the request body")
+	_ = cmd.MarkFlagRequired("from")
+	_ = cmd.MarkFlagRequired("expect")
+	return cmd
+}
+
+func newCheckLoginCmd() *cobra.Command {
+	var c check.LoginCheck
+	cmd := &cobra.Command{
+		Use:   "login NAMESPACE/SERVICE[:PORT]/PATH --client NAME --from WORKLOAD --expect RESULT",
+		Short: "Logs in from a workload, and passes if the result is the expected one",
+		Long: `login logs in from a workload as an OAuth client, at the OpenID Connect issuer at the
+given address (port 8080 unless given), with the client credentials grant. It finds the token
+endpoint through the issuer's /.well-known/openid-configuration.
+
+With --secret, the workload logs in with the client's secret. Without it, it logs in with its
+ServiceAccount token as a client assertion (RFC 7523), addressed to the issuer.
+
+The login always comes from a new pod: with the ServiceAccount and labels of a Deployment's or
+CronJob's pods, or as the namespace's default ServiceAccount for a new pod.
+
+With --method and --to, it then sends that request with the access token, and --expect is
+about its answer. Without them, --expect is about the login. A refused login counts as
+blocked:
+  200, 403, …   exactly this status code
+  2xx, 4xx, …   any status code in this class
+  blocked       a refused login, or a request refused (403) or with no connection`,
+		Example: `  aocn check login auth/idp/realms/apps --client frontend --from apps/deploy/frontend --expect 2xx
+  aocn check login auth/idp/realms/apps --client frontend --from apps/new-pod --method GET --to apps/api/items --expect blocked
+  aocn check login auth/idp/realms/apps --client worker --secret s3cret --from apps/new-pod --expect 2xx`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c.Issuer = args[0]
+			l, err := check.ParseLogin(c)
+			if err != nil {
+				return err
+			}
+			f := &check.Fixtures{}
+			defer f.Close()
+			return failedIfNot(cmd)(check.RunLogin(cmd.Context(), f, l))
+		},
+	}
+	cmd.Flags().StringVar(&c.Client, "client", "", "the client to log in as")
+	cmd.Flags().StringVar(&c.Secret, "secret", "", "the client's secret; without it, the workload's ServiceAccount token")
+	cmd.Flags().StringVar(&c.From, "from", "", "the workload that logs in")
+	cmd.Flags().StringVar(&c.Method, "method", "", "the method of the request after the login")
+	cmd.Flags().StringVar(&c.To, "to", "", "where the request after the login goes: NAMESPACE/SERVICE[:PORT]/PATH")
+	cmd.Flags().StringVar(&c.Expect, "expect", "", "the expected result: a status code, a class like 2xx, or blocked")
+	_ = cmd.MarkFlagRequired("client")
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("expect")
 	return cmd

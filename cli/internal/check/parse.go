@@ -157,3 +157,42 @@ func (e Expect) Describe(what string) (pass, fail string) {
 		return fmt.Sprintf("%s answers %d", what, e.Status), fmt.Sprintf("%s should answer %d", what, e.Status)
 	}
 }
+
+// ParseLogin reads a login check: the issuer like a target, the workload like an HTTP check's,
+// and method and to, which come together or not at all.
+func ParseLogin(c LoginCheck) (Login, error) {
+	issuer, err := ParseTarget(c.Issuer)
+	if err != nil {
+		return Login{}, fmt.Errorf("issuer: %w", err)
+	}
+	if issuer.TestServer {
+		return Login{}, fmt.Errorf("issuer must be NAMESPACE/SERVICE/PATH, got %q", c.Issuer)
+	}
+	if c.Client == "" {
+		return Login{}, fmt.Errorf("a login needs a client")
+	}
+	source, err := ParseSource(c.From)
+	if err != nil {
+		return Login{}, err
+	}
+	expect, err := ParseExpect(c.Expect)
+	if err != nil {
+		return Login{}, err
+	}
+	l := Login{Issuer: issuer, Client: c.Client, Secret: c.Secret, From: source, Expect: expect}
+	switch {
+	case c.Method == "" && c.To == "":
+	case c.Method == "" || c.To == "":
+		return Login{}, fmt.Errorf("a login's method and to come together")
+	default:
+		target, err := ParseTarget(c.To)
+		if err != nil {
+			return Login{}, err
+		}
+		if target.TestServer {
+			return Login{}, fmt.Errorf("a login can't send to the test server")
+		}
+		l.Method, l.Target = c.Method, &target
+	}
+	return l, nil
+}

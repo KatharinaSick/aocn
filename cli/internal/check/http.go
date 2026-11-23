@@ -136,7 +136,8 @@ spec:
 var testPods atomic.Int64
 
 // probeFromTestPod runs the probe in a new pod with labels (k=v,k=v) and deletes it after.
-func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs []string) (string, error) {
+// extra are more kubectl run flags, in which podNamePlaceholder stands for the pod's name.
+func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs []string, extra ...string) (string, error) {
 	image, err := stationImage(ctx)
 	if err != nil {
 		return "", err
@@ -145,8 +146,12 @@ func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs [
 	// that may still be terminating.
 	pod := fmt.Sprintf("%s-%d-%d", fixtureName, rand.IntN(100000), testPods.Add(1))
 	// The delay gives the network time to apply the pod's policies before the request.
-	args := append([]string{"run", pod, "-n", namespace, "--image=" + image, "--restart=Never",
-		"--labels=" + labels + ",aocn-verify=probe", "--command", "--"}, probeArgs...)
+	args := []string{"run", pod, "-n", namespace, "--image=" + image, "--restart=Never",
+		"--labels=" + strings.TrimPrefix(labels+",aocn-verify=probe", ",")}
+	for _, e := range extra {
+		args = append(args, strings.ReplaceAll(e, podNamePlaceholder, pod))
+	}
+	args = append(append(args, "--command", "--"), probeArgs...)
 	args = append(args, "--delay", "2s")
 	if _, err := kubectl.Run(ctx, args...); err != nil {
 		return "", err

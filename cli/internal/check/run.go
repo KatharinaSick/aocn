@@ -7,15 +7,16 @@ import (
 	"sync"
 )
 
-// Check is one of a door's checks, as the API hands it out. Exactly one of Ready, HTTP and
-// Job is set. Checks only ever come from the API, never from the player's folder, so editing
-// files can't make a door pass.
+// Check is one of a door's checks, as the API hands it out. Exactly one of Ready, HTTP, Job
+// and Login is set. Checks only ever come from the API, never from the player's folder, so
+// editing files can't make a door pass.
 type Check struct {
 	// ID names the check when its result is sent back.
-	ID    string     `json:"id"`
-	Ready []string   `json:"ready,omitempty"`
-	HTTP  *HTTPCheck `json:"http,omitempty"`
-	Job   string     `json:"job,omitempty"`
+	ID    string      `json:"id"`
+	Ready []string    `json:"ready,omitempty"`
+	HTTP  *HTTPCheck  `json:"http,omitempty"`
+	Job   string      `json:"job,omitempty"`
+	Login *LoginCheck `json:"login,omitempty"`
 	// Goal is the line of the door's mission the check belongs to. aocn verify shows one line
 	// per goal instead of each check, so it doesn't give away what to change.
 	Goal string `json:"goal,omitempty"`
@@ -28,6 +29,18 @@ type HTTPCheck struct {
 	From   string `json:"from"`
 	Expect string `json:"expect"`
 	Data   string `json:"data,omitempty"`
+}
+
+// LoginCheck is a login from a workload, and optionally a request with its access token,
+// with what it should get. See aocn check login.
+type LoginCheck struct {
+	Issuer string `json:"issuer"`
+	Client string `json:"client"`
+	Secret string `json:"secret,omitempty"`
+	From   string `json:"from"`
+	Method string `json:"method,omitempty"`
+	To     string `json:"to,omitempty"`
+	Expect string `json:"expect"`
 }
 
 // Outcome is one check's result, as sent to the API.
@@ -233,6 +246,15 @@ func plan(c Check) (step, error) {
 		}
 		return func(ctx context.Context, f *Fixtures) (Result, error) {
 			return HTTP(ctx, f, c.HTTP.Method, source, target, c.HTTP.Data, expect)
+		}, nil
+
+	case c.Login != nil:
+		l, err := ParseLogin(*c.Login)
+		if err != nil {
+			return nil, brokenCheck(err)
+		}
+		return func(ctx context.Context, f *Fixtures) (Result, error) {
+			return RunLogin(ctx, f, l)
 		}, nil
 
 	case c.Job != "":
