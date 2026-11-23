@@ -42,6 +42,9 @@ render() {
   },
   "postCreateCommand": "git update-index --skip-worktree README.md && sed -i 's|page: https://aocn.dev\$|page: https://aocn.dev/doors/$n|' README.md",
   "customizations": {
+    "codespaces": {
+      "openFiles": ["play/README.md"]
+    },
     "vscode": {
       "settings": {
         "files.exclude": {
