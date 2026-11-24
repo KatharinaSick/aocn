@@ -92,6 +92,15 @@ func TestParseChecksRefuses(t *testing.T) {
 		"login, to alone":     "- login: {issuer: auth/idp/realms/apps, client: frontend, from: apps/new-pod, to: apps/api/items, expect: 2xx}",
 		"login, method alone": "- login: {issuer: auth/idp/realms/apps, client: frontend, from: apps/new-pod, method: GET, expect: 2xx}",
 		"login and http":      "- {job: apps/cronjob/x, login: {issuer: a/b/c, client: x, from: a/new-pod, expect: 2xx}}",
+		"login, issuer slash": "- login: {issuer: auth/idp/realms/apps/, client: frontend, from: apps/new-pod, expect: 2xx}",
+		"login, root slash":   "- login: {issuer: auth/idp/, client: frontend, from: apps/new-pod, expect: 2xx}",
+		"login, issuer query": "- login: {issuer: 'auth/idp/realms/apps?x=1', client: frontend, from: apps/new-pod, expect: 2xx}",
+		"login, no service":   "- login: {issuer: auth, client: frontend, from: apps/new-pod, expect: 2xx}",
+		"login, test server":  "- login: {issuer: test-server/realms/apps, client: frontend, from: apps/new-pod, expect: 2xx}",
+		"login, bad from":     "- login: {issuer: auth/idp/realms/apps, client: frontend, from: apps/frontend, expect: 2xx}",
+		"login, bad to":       "- login: {issuer: auth/idp/realms/apps, client: frontend, from: apps/new-pod, method: GET, to: test-server, expect: 2xx}",
+		"login only, 401":     "- login: {issuer: auth/idp/realms/apps, client: frontend, from: apps/new-pod, expect: 401}",
+		"login only, 4xx":     "- login: {issuer: auth/idp/realms/apps, client: frontend, from: apps/new-pod, expect: 4xx}",
 	}
 	for name, yaml := range tests {
 		t.Run(name, func(t *testing.T) {

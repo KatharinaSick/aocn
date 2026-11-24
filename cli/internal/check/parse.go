@@ -158,9 +158,18 @@ func (e Expect) Describe(what string) (pass, fail string) {
 	}
 }
 
+var methodPattern = regexp.MustCompile(`^[A-Z]+$`)
+
 // ParseLogin reads a login check: the issuer like a target, the workload like an HTTP check's,
 // and method and to, which come together or not at all.
+//
+// The issuer is written as tokens name it, so it can't end in a slash or have a query: the
+// test pod's token is addressed to it, and an issuer refuses a token addressed to another
+// spelling of its name. That refusal would count as blocked whatever the player did.
 func ParseLogin(c LoginCheck) (Login, error) {
+	if strings.HasSuffix(c.Issuer, "/") || strings.ContainsAny(c.Issuer, "?#") {
+		return Login{}, fmt.Errorf("issuer must be NAMESPACE/SERVICE/PATH without a trailing slash or a query, got %q", c.Issuer)
+	}
 	issuer, err := ParseTarget(c.Issuer)
 	if err != nil {
 		return Login{}, fmt.Errorf("issuer: %w", err)
@@ -182,8 +191,14 @@ func ParseLogin(c LoginCheck) (Login, error) {
 	l := Login{Issuer: issuer, Client: c.Client, Secret: c.Secret, From: source, Expect: expect}
 	switch {
 	case c.Method == "" && c.To == "":
+		// A login only answers with a token or a refusal, which counts as blocked.
+		if !expect.Blocked && expect.Class != 2 && expect.Status != 200 {
+			return Login{}, fmt.Errorf("a login without a request can only expect 2xx, 200 or blocked, got %q", c.Expect)
+		}
 	case c.Method == "" || c.To == "":
 		return Login{}, fmt.Errorf("a login's method and to come together")
+	case !methodPattern.MatchString(c.Method):
+		return Login{}, fmt.Errorf("method must be like GET or POST, got %q", c.Method)
 	default:
 		target, err := ParseTarget(c.To)
 		if err != nil {

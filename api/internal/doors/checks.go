@@ -85,7 +85,20 @@ type LoginCheck struct {
 var (
 	methodPattern = regexp.MustCompile(`^[A-Z]+$`)
 	expectPattern = regexp.MustCompile(`^(blocked|[1-5]xx|[1-5][0-9]{2})$`)
+	// A login's issuer and to, like the CLI reads them: NAMESPACE/SERVICE[:PORT][/PATH]. The
+	// issuer is written as tokens name it: no trailing slash, no query.
+	targetPattern = regexp.MustCompile(`^[^/\s:]+/[^/\s:]+(:[0-9]{1,5})?(/\S*)?$`)
+	issuerPattern = regexp.MustCompile(`^[^/\s:]+/[^/\s:]+(:[0-9]{1,5})?(/[^\s?#]*[^/\s?#])?$`)
+	// A login's from: NAMESPACE/new-pod, NAMESPACE/deploy/NAME or NAMESPACE/cronjob/NAME.
+	sourcePattern = regexp.MustCompile(`^[^/\s]+/(new-pod|(deploy|deployment|cronjob)/[^/\s]+)$`)
+	// What a login without a request can answer: a token, or a refusal.
+	loginOnlyExpectPattern = regexp.MustCompile(`^(blocked|2xx|200)$`)
 )
+
+// isTestServer reports whether a target names the CLI's test server, which a login can't use.
+func isTestServer(target string) bool {
+	return target == "test-server" || strings.HasPrefix(target, "test-server/")
+}
 
 // ParseChecks reads a checks.yaml: a list of checks, each with its ID set. Like page.yaml, an
 // unknown key is an error, so a typo can't quietly drop a check.
@@ -186,16 +199,24 @@ func (c Check) validate() error {
 		switch {
 		case l.Issuer == "":
 			return errors.New("login: issuer is required")
+		case !issuerPattern.MatchString(l.Issuer) || isTestServer(l.Issuer):
+			return fmt.Errorf("login: issuer must be NAMESPACE/SERVICE/PATH without a trailing slash or a query, got %q", l.Issuer)
 		case l.Client == "":
 			return errors.New("login: client is required")
 		case l.From == "":
 			return errors.New("login: from is required")
+		case !sourcePattern.MatchString(l.From):
+			return fmt.Errorf("login: from must be NAMESPACE/deploy/NAME, NAMESPACE/cronjob/NAME or NAMESPACE/new-pod, got %q", l.From)
 		case !expectPattern.MatchString(l.Expect):
 			return fmt.Errorf("login: expect must be a status code like 403, a class like 2xx, or blocked, got %q", l.Expect)
 		case (l.Method == "") != (l.To == ""):
 			return errors.New("login: method and to come together")
+		case l.To == "" && !loginOnlyExpectPattern.MatchString(l.Expect):
+			return fmt.Errorf("login: a login without a request can only expect 2xx, 200 or blocked, got %q", l.Expect)
 		case l.Method != "" && !methodPattern.MatchString(l.Method):
 			return fmt.Errorf("login: method must be like GET or POST, got %q", l.Method)
+		case l.To != "" && (!targetPattern.MatchString(l.To) || isTestServer(l.To)):
+			return fmt.Errorf("login: to must be NAMESPACE/SERVICE[:PORT]/PATH, got %q", l.To)
 		}
 	}
 	if kinds != 1 {

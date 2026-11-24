@@ -2,7 +2,6 @@ package check
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -90,8 +89,15 @@ func RunLogin(ctx context.Context, f *Fixtures, l Login) (Result, error) {
 	return said(r, fmt.Sprintf("%s, but got: %s", fail, answer)), nil
 }
 
+// IssuerURL is the issuer's address as its tokens name it, without the trailing slash an
+// issuer at the server's root (auth/idp) would get as a target. The test pod's token is
+// addressed to it.
+func (l Login) IssuerURL() string {
+	return strings.TrimSuffix(l.Issuer.URL(), "/")
+}
+
 func loginProbe(ctx context.Context, f *Fixtures, l Login) (string, error) {
-	issuer := l.Issuer.URL()
+	issuer := l.IssuerURL()
 	args := []string{"/station", "--role", "probe", "--login-issuer", issuer, "--login-client", l.Client}
 	if l.Secret != "" {
 		args = append(args, "--login-secret", l.Secret)
@@ -118,11 +124,11 @@ func loginProbe(ctx context.Context, f *Fixtures, l Login) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown workload kind %q", l.From.Kind)
 	}
-	overrides, err := loginOverrides(account, issuer, l.Secret == "")
-	if err != nil {
-		return "", err
+	pod := testPod{Account: account}
+	if l.Secret == "" {
+		pod.TokenAudience = issuer
 	}
-	return probeFromTestPod(ctx, l.From.Namespace, labels, args, overrides...)
+	return probeFromTestPod(ctx, l.From.Namespace, labels, args, pod)
 }
 
 // podIdentity returns the ServiceAccount and labels (k=v,k=v) of a Deployment's or CronJob's
@@ -147,32 +153,3 @@ func podIdentity(ctx context.Context, s Source) (account, labels string, err err
 	}
 	return account, strings.TrimSuffix(labels, ","), nil
 }
-
-// loginOverrides is what a login check's test pod gets on top of kubectl run's: the
-// ServiceAccount, and with withToken a ServiceAccount token for the issuer at tokenDir. It's
-// a strategic merge, so the container is matched by its name, which kubectl run sets to the
-// pod's: probeFromTestPod fills it in.
-func loginOverrides(account, audience string, withToken bool) ([]string, error) {
-	spec := map[string]any{"serviceAccountName": account}
-	if withToken {
-		spec["containers"] = []map[string]any{{
-			"name":         podNamePlaceholder,
-			"volumeMounts": []map[string]any{{"name": "aocn-token", "mountPath": tokenDir, "readOnly": true}},
-		}}
-		spec["volumes"] = []map[string]any{{
-			"name": "aocn-token",
-			"projected": map[string]any{"sources": []map[string]any{{
-				"serviceAccountToken": map[string]any{"audience": audience, "expirationSeconds": 600, "path": "token"},
-			}}},
-		}}
-	}
-	data, err := json.Marshal(map[string]any{"spec": spec})
-	if err != nil {
-		return nil, err
-	}
-	return []string{"--override-type=strategic", "--overrides=" + string(data)}, nil
-}
-
-// podNamePlaceholder stands for the test pod's name in overrides, which is only known when
-// the pod is created.
-const podNamePlaceholder = "{{pod}}"

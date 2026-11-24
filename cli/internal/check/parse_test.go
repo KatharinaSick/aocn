@@ -162,6 +162,16 @@ func TestParseLoginRejects(t *testing.T) {
 		"method alone":   func(c *LoginCheck) { c.Method = "GET" },
 		"to alone":       func(c *LoginCheck) { c.To = "apps/api/items" },
 		"to test server": func(c *LoginCheck) { c.Method, c.To = "GET", "test-server" },
+		"issuer slash":   func(c *LoginCheck) { c.Issuer = "auth/idp/realms/apps/" },
+		"root slash":     func(c *LoginCheck) { c.Issuer = "auth/idp/" },
+		"issuer query":   func(c *LoginCheck) { c.Issuer = "auth/idp/realms/apps?x=1" },
+		"issuer anchor":  func(c *LoginCheck) { c.Issuer = "auth/idp/realms/apps#x" },
+		"lower method":   func(c *LoginCheck) { c.Method, c.To = "get", "apps/api/items" },
+		// A login alone answers with a token or a refusal, nothing else.
+		"login 401": func(c *LoginCheck) { c.Expect = "401" },
+		"login 4xx": func(c *LoginCheck) { c.Expect = "4xx" },
+		"login 204": func(c *LoginCheck) { c.Expect = "204" },
+		"login 3xx": func(c *LoginCheck) { c.Expect = "3xx" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := ok
@@ -196,6 +206,11 @@ func TestLoginMatches(t *testing.T) {
 		{expect: "blocked", answer: "204 No Content", want: false},
 		{expect: "2xx", answer: "200 OK", want: true},
 		{expect: "404", answer: "404 Not Found", want: true},
+		// Every 4xx at the login is a refusal, a 429 too.
+		{expect: "blocked", answer: "login: 429 Too Many Requests", want: true},
+		{expect: "blocked", answer: "login: nonsense", want: false},
+		{expect: "3xx", answer: "301 Moved Permanently", want: true},
+		{expect: "3xx", answer: "login: 401 Unauthorized", want: false},
 	}
 	for _, tt := range tests {
 		e, err := ParseExpect(tt.expect)
@@ -208,19 +223,49 @@ func TestLoginMatches(t *testing.T) {
 	}
 }
 
-func TestLoginOverrides(t *testing.T) {
-	with, err := loginOverrides("frontend", "http://idp.auth:8080/realms/apps", true)
+func TestTestPodArgs(t *testing.T) {
+	probe := []string{"/station", "--role", "probe"}
+	plain, err := testPodArgs("p-1", "apps", "station:1", "", probe, testPod{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	joined := strings.Join(with, " ")
-	for _, want := range []string{"--override-type=strategic", `"serviceAccountName":"frontend"`, `"audience":"http://idp.auth:8080/realms/apps"`, `"name":"` + podNamePlaceholder + `"`, `"mountPath":"` + tokenDir + `"`} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("overrides %s lack %s", joined, want)
+	joined := strings.Join(plain, " ")
+	// Without labels of its own, the pod only gets the probe's.
+	for _, want := range []string{"--labels=aocn-verify=probe ", "--override-type=strategic", `"name":"p-1"`, `"readinessProbe":{"periodSeconds":60,"tcpSocket":{"port":1}}`, "-- /station --role probe --delay 2s"} {
+		if !strings.Contains(joined+" ", want) {
+			t.Errorf("args %s lack %s", joined, want)
 		}
 	}
-	without, _ := loginOverrides("default", "http://idp.auth:8080/realms/apps", false)
-	if joined := strings.Join(without, " "); strings.Contains(joined, "volumes") || !strings.Contains(joined, `"serviceAccountName":"default"`) {
-		t.Errorf("overrides without a token: %s", joined)
+	for _, unwanted := range []string{"serviceAccountName", "volumes"} {
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("args without an account or token have %s: %s", unwanted, joined)
+		}
+	}
+
+	login, err := testPodArgs("p-2", "apps", "station:1", "app=frontend", probe, testPod{Account: "frontend", TokenAudience: "http://idp.auth:8080/realms/apps"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(login, " ")
+	for _, want := range []string{"--labels=app=frontend,aocn-verify=probe", `"serviceAccountName":"frontend"`, `"audience":"http://idp.auth:8080/realms/apps"`, `"name":"p-2"`, `"mountPath":"` + tokenDir + `"`, "readinessProbe"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("args %s lack %s", joined, want)
+		}
+	}
+}
+
+func TestLoginIssuerURL(t *testing.T) {
+	for issuer, want := range map[string]string{
+		"auth/idp":             "http://idp.auth:8080",
+		"auth/idp:8443":        "http://idp.auth:8443",
+		"auth/idp/realms/apps": "http://idp.auth:8080/realms/apps",
+	} {
+		l, err := ParseLogin(LoginCheck{Issuer: issuer, Client: "frontend", From: "apps/new-pod", Expect: "2xx"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := l.IssuerURL(); got != want {
+			t.Errorf("IssuerURL() of %s = %q, want %q", issuer, got, want)
+		}
 	}
 }
