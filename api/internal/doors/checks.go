@@ -16,13 +16,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Check is one check from a door's checks.yaml. Exactly one of Ready, HTTP and Job is set.
+// Check is one check from a door's checks.yaml. Exactly one of Ready, HTTP, Job and Login is
+// set.
 // The CLI runs them, and sends back one result per ID.
 //
 //   - ready: [apps, db]        every Deployment in the namespaces is ready. Ready checks run
 //     first, and if one fails, the other checks don't run.
 //   - http: {method, to, from, expect, data}   a request from a workload
 //   - job: apps/cronjob/cleanup                a fresh run of the CronJob completes
+//   - login: {issuer, client, secret, from, method, to, expect}   a workload logs in at an
+//     OpenID Connect issuer, with a secret or with its ServiceAccount token, and then, if
+//     method and to are given, sends a request with the access token
 //
 // Checks can be grouped under a line of the door's mission in page.yaml, by its number:
 //
@@ -39,6 +43,10 @@ type Check struct {
 	Ready []string   `yaml:"ready,omitempty" json:"ready,omitempty"`
 	HTTP  *HTTPCheck `yaml:"http,omitempty" json:"http,omitempty"`
 	Job   string     `yaml:"job,omitempty" json:"job,omitempty"`
+	// Login is new in CLI 0.9.0. Older CLIs refuse a kind they don't know, so they say to
+	// update instead of running the check without logging in. omitempty keeps the IDs of
+	// checks without it as they were.
+	Login *LoginCheck `yaml:"login,omitempty" json:"login,omitempty"`
 	// Goal is the number of the mission line the check belongs to, from 1, or 0 for none.
 	Goal int `yaml:"-" json:"-"`
 }
@@ -60,10 +68,37 @@ type HTTPCheck struct {
 	Data   string `yaml:"data,omitempty" json:"data,omitempty"`
 }
 
+// LoginCheck logs in from a workload, and passes if the login, or the request sent with its
+// access token, gets the expected answer. Without Secret, the workload logs in with its
+// ServiceAccount token. The CLI documents what each field accepts; the API checks they're
+// there.
+type LoginCheck struct {
+	Issuer string `yaml:"issuer" json:"issuer"`
+	Client string `yaml:"client" json:"client"`
+	Secret string `yaml:"secret,omitempty" json:"secret,omitempty"`
+	From   string `yaml:"from" json:"from"`
+	Method string `yaml:"method,omitempty" json:"method,omitempty"`
+	To     string `yaml:"to,omitempty" json:"to,omitempty"`
+	Expect string `yaml:"expect" json:"expect"`
+}
+
 var (
 	methodPattern = regexp.MustCompile(`^[A-Z]+$`)
 	expectPattern = regexp.MustCompile(`^(blocked|[1-5]xx|[1-5][0-9]{2})$`)
+	// A login's issuer and to, like the CLI reads them: NAMESPACE/SERVICE[:PORT][/PATH]. The
+	// issuer is written as tokens name it: no trailing slash, no query.
+	targetPattern = regexp.MustCompile(`^[^/\s:]+/[^/\s:]+(:[0-9]{1,5})?(/\S*)?$`)
+	issuerPattern = regexp.MustCompile(`^[^/\s:]+/[^/\s:]+(:[0-9]{1,5})?(/[^\s?#]*[^/\s?#])?$`)
+	// A login's from: NAMESPACE/new-pod, NAMESPACE/deploy/NAME or NAMESPACE/cronjob/NAME.
+	sourcePattern = regexp.MustCompile(`^[^/\s]+/(new-pod|(deploy|deployment|cronjob)/[^/\s]+)$`)
+	// What a login without a request can answer: a token, or a refusal.
+	loginOnlyExpectPattern = regexp.MustCompile(`^(blocked|2xx|200)$`)
 )
+
+// isTestServer reports whether a target names the CLI's test server, which a login can't use.
+func isTestServer(target string) bool {
+	return target == "test-server" || strings.HasPrefix(target, "test-server/")
+}
 
 // ParseChecks reads a checks.yaml: a list of checks, each with its ID set. Like page.yaml, an
 // unknown key is an error, so a typo can't quietly drop a check.
@@ -94,7 +129,7 @@ func ParseChecks(data []byte) ([]Check, error) {
 			where = append(where, fmt.Sprintf("check %d", i+1))
 		case e.Goal < 1:
 			return nil, fmt.Errorf("checks.yaml: item %d: checks need a goal, the number of a mission line in page.yaml", i+1)
-		case e.Ready != nil || e.HTTP != nil || e.Job != "":
+		case e.Ready != nil || e.HTTP != nil || e.Job != "" || e.Login != nil:
 			return nil, fmt.Errorf("checks.yaml: item %d: a goal lists its checks under checks", i+1)
 		case len(e.Checks) == 0:
 			return nil, fmt.Errorf("checks.yaml: goal %d has no checks", e.Goal)
@@ -158,8 +193,34 @@ func (c Check) validate() error {
 	if c.Job != "" {
 		kinds++
 	}
+	if c.Login != nil {
+		kinds++
+		l := c.Login
+		switch {
+		case l.Issuer == "":
+			return errors.New("login: issuer is required")
+		case !issuerPattern.MatchString(l.Issuer) || isTestServer(l.Issuer):
+			return fmt.Errorf("login: issuer must be NAMESPACE/SERVICE/PATH without a trailing slash or a query, got %q", l.Issuer)
+		case l.Client == "":
+			return errors.New("login: client is required")
+		case l.From == "":
+			return errors.New("login: from is required")
+		case !sourcePattern.MatchString(l.From):
+			return fmt.Errorf("login: from must be NAMESPACE/deploy/NAME, NAMESPACE/cronjob/NAME or NAMESPACE/new-pod, got %q", l.From)
+		case !expectPattern.MatchString(l.Expect):
+			return fmt.Errorf("login: expect must be a status code like 403, a class like 2xx, or blocked, got %q", l.Expect)
+		case (l.Method == "") != (l.To == ""):
+			return errors.New("login: method and to come together")
+		case l.To == "" && !loginOnlyExpectPattern.MatchString(l.Expect):
+			return fmt.Errorf("login: a login without a request can only expect 2xx, 200 or blocked, got %q", l.Expect)
+		case l.Method != "" && !methodPattern.MatchString(l.Method):
+			return fmt.Errorf("login: method must be like GET or POST, got %q", l.Method)
+		case l.To != "" && (!targetPattern.MatchString(l.To) || isTestServer(l.To)):
+			return fmt.Errorf("login: to must be NAMESPACE/SERVICE[:PORT]/PATH, got %q", l.To)
+		}
+	}
 	if kinds != 1 {
-		return errors.New("needs exactly one of ready, http or job")
+		return errors.New("needs exactly one of ready, http, job or login")
 	}
 	return nil
 }

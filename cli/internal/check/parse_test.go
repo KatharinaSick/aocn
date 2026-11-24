@@ -1,6 +1,9 @@
 package check
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseSource(t *testing.T) {
 	tests := []struct {
@@ -121,5 +124,148 @@ func TestParseTestServerTarget(t *testing.T) {
 	// A namespace that starts like it is still a namespace.
 	if got, err := ParseTarget("test-servers/api/items"); err != nil || got.TestServer {
 		t.Errorf("ParseTarget(test-servers/api/items) = %+v, %v, want a normal target", got, err)
+	}
+}
+
+func TestParseLogin(t *testing.T) {
+	l, err := ParseLogin(LoginCheck{Issuer: "auth/idp/realms/apps", Client: "frontend", From: "apps/deploy/frontend", Method: "GET", To: "apps/api/items", Expect: "2xx"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Issuer.URL() != "http://idp.auth:8080/realms/apps" || l.Target == nil || l.Target.URL() != "http://api.apps:8080/items" {
+		t.Errorf("got %+v", l)
+	}
+	if got := l.Describe(); got != "frontend's ServiceAccount as frontend → api GET /items" {
+		t.Errorf("Describe() = %q", got)
+	}
+
+	only, err := ParseLogin(LoginCheck{Issuer: "auth/idp:8443/realms/apps", Client: "worker", Secret: "s3cret", From: "apps/new-pod", Expect: "blocked"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if only.Target != nil || only.Issuer.URL() != "http://idp.auth:8443/realms/apps" {
+		t.Errorf("got %+v", only)
+	}
+	if got := only.Describe(); got != "a new pod in apps logging in as worker with a secret" {
+		t.Errorf("Describe() = %q", got)
+	}
+}
+
+func TestParseLoginRejects(t *testing.T) {
+	ok := LoginCheck{Issuer: "auth/idp/realms/apps", Client: "frontend", From: "apps/new-pod", Expect: "2xx"}
+	for name, change := range map[string]func(*LoginCheck){
+		"bad issuer":     func(c *LoginCheck) { c.Issuer = "auth" },
+		"test server":    func(c *LoginCheck) { c.Issuer = "test-server" },
+		"no client":      func(c *LoginCheck) { c.Client = "" },
+		"bad from":       func(c *LoginCheck) { c.From = "apps/frontend" },
+		"bad expect":     func(c *LoginCheck) { c.Expect = "ok" },
+		"method alone":   func(c *LoginCheck) { c.Method = "GET" },
+		"to alone":       func(c *LoginCheck) { c.To = "apps/api/items" },
+		"to test server": func(c *LoginCheck) { c.Method, c.To = "GET", "test-server" },
+		"issuer slash":   func(c *LoginCheck) { c.Issuer = "auth/idp/realms/apps/" },
+		"root slash":     func(c *LoginCheck) { c.Issuer = "auth/idp/" },
+		"issuer query":   func(c *LoginCheck) { c.Issuer = "auth/idp/realms/apps?x=1" },
+		"issuer anchor":  func(c *LoginCheck) { c.Issuer = "auth/idp/realms/apps#x" },
+		"lower method":   func(c *LoginCheck) { c.Method, c.To = "get", "apps/api/items" },
+		// A login alone answers with a token or a refusal, nothing else.
+		"login 401": func(c *LoginCheck) { c.Expect = "401" },
+		"login 4xx": func(c *LoginCheck) { c.Expect = "4xx" },
+		"login 204": func(c *LoginCheck) { c.Expect = "204" },
+		"login 3xx": func(c *LoginCheck) { c.Expect = "3xx" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := ok
+			change(&c)
+			if l, err := ParseLogin(c); err == nil {
+				t.Errorf("got %+v, want an error", l)
+			}
+		})
+	}
+}
+
+func TestLoginMatches(t *testing.T) {
+	tests := []struct {
+		expect string
+		answer string
+		want   bool
+	}{
+		// Only logging in.
+		{expect: "2xx", answer: "200 OK", want: true},
+		{expect: "2xx", answer: "login: 401 Unauthorized", want: false},
+		{expect: "blocked", answer: "login: 401 Unauthorized", want: true},
+		{expect: "blocked", answer: "login: 400 Bad Request", want: true},
+		{expect: "blocked", answer: "200 OK", want: false},
+		{expect: "401", answer: "login: 401 Unauthorized", want: false},
+		// The issuer couldn't be reached: that's no answer about the workload at all.
+		{expect: "blocked", answer: "login: error: dial tcp: i/o timeout", want: false},
+		{expect: "2xx", answer: "login: error: dial tcp: i/o timeout", want: false},
+		{expect: "blocked", answer: "login: 500 Internal Server Error", want: false},
+		// The request after the login, like an HTTP check.
+		{expect: "blocked", answer: "403 Forbidden", want: true},
+		{expect: "blocked", answer: "error: dial tcp 10.96.0.12:8080: i/o timeout", want: true},
+		{expect: "blocked", answer: "204 No Content", want: false},
+		{expect: "2xx", answer: "200 OK", want: true},
+		{expect: "404", answer: "404 Not Found", want: true},
+		// Every 4xx at the login is a refusal, a 429 too.
+		{expect: "blocked", answer: "login: 429 Too Many Requests", want: true},
+		{expect: "blocked", answer: "login: nonsense", want: false},
+		{expect: "3xx", answer: "301 Moved Permanently", want: true},
+		{expect: "3xx", answer: "login: 401 Unauthorized", want: false},
+	}
+	for _, tt := range tests {
+		e, err := ParseExpect(tt.expect)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := (Login{Expect: e}).Matches(tt.answer); got != tt.want {
+			t.Errorf("expect %s, answer %q: got %v, want %v", tt.expect, tt.answer, got, tt.want)
+		}
+	}
+}
+
+func TestTestPodArgs(t *testing.T) {
+	probe := []string{"/station", "--role", "probe"}
+	plain, err := testPodArgs("p-1", "apps", "station:1", "", probe, testPod{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(plain, " ")
+	// Without labels of its own, the pod only gets the probe's.
+	for _, want := range []string{"--labels=aocn-verify=probe ", "--override-type=strategic", `"name":"p-1"`, `"readinessProbe":{"periodSeconds":60,"tcpSocket":{"port":1}}`, "-- /station --role probe --delay 2s"} {
+		if !strings.Contains(joined+" ", want) {
+			t.Errorf("args %s lack %s", joined, want)
+		}
+	}
+	for _, unwanted := range []string{"serviceAccountName", "volumes"} {
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("args without an account or token have %s: %s", unwanted, joined)
+		}
+	}
+
+	login, err := testPodArgs("p-2", "apps", "station:1", "app=frontend", probe, testPod{Account: "frontend", TokenAudience: "http://idp.auth:8080/realms/apps"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(login, " ")
+	for _, want := range []string{"--labels=app=frontend,aocn-verify=probe", `"serviceAccountName":"frontend"`, `"audience":"http://idp.auth:8080/realms/apps"`, `"name":"p-2"`, `"mountPath":"` + tokenDir + `"`, "readinessProbe"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("args %s lack %s", joined, want)
+		}
+	}
+}
+
+func TestLoginIssuerURL(t *testing.T) {
+	for issuer, want := range map[string]string{
+		"auth/idp":             "http://idp.auth:8080",
+		"auth/idp:8443":        "http://idp.auth:8443",
+		"auth/idp/realms/apps": "http://idp.auth:8080/realms/apps",
+	} {
+		l, err := ParseLogin(LoginCheck{Issuer: issuer, Client: "frontend", From: "apps/new-pod", Expect: "2xx"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := l.IssuerURL(); got != want {
+			t.Errorf("IssuerURL() of %s = %q, want %q", issuer, got, want)
+		}
 	}
 }

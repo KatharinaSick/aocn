@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -63,13 +64,13 @@ func probe(ctx context.Context, f *Fixtures, source Source, target Target, metho
 	case KindNewPod:
 		// To the test server, the namespace's own policies are what's tested.
 		if target.TestServer {
-			return probeFromTestPod(ctx, source.Namespace, "app="+fixtureName+"-plain", probeArgs)
+			return probeFromTestPod(ctx, source.Namespace, "app="+fixtureName+"-plain", probeArgs, testPod{})
 		}
 		// Elsewhere only the destination decides: the fixture opens the test pod's egress.
 		if err := f.egress(ctx, source.Namespace); err != nil {
 			return "", err
 		}
-		return probeFromTestPod(ctx, source.Namespace, "app="+fixtureName, probeArgs)
+		return probeFromTestPod(ctx, source.Namespace, "app="+fixtureName, probeArgs, testPod{})
 
 	case KindCronJob:
 		// The pod gets the job's labels and so the job's policies. This tests what the
@@ -79,7 +80,7 @@ func probe(ctx context.Context, f *Fixtures, source Source, target Target, metho
 		if err != nil {
 			return "", err
 		}
-		return probeFromTestPod(ctx, source.Namespace, strings.TrimSuffix(labels, ","), probeArgs)
+		return probeFromTestPod(ctx, source.Namespace, strings.TrimSuffix(labels, ","), probeArgs, testPod{})
 	}
 	return "", fmt.Errorf("unknown workload kind %q", source.Kind)
 }
@@ -135,8 +136,17 @@ spec:
 // testPods counts the test pods this aocn started, for their names.
 var testPods atomic.Int64
 
+// testPod is what a test pod gets on top of kubectl run's.
+type testPod struct {
+	// Account is the pod's ServiceAccount. Empty is the namespace's default.
+	Account string
+	// TokenAudience, if set, gives the pod a ServiceAccount token addressed to it, at
+	// tokenDir/token.
+	TokenAudience string
+}
+
 // probeFromTestPod runs the probe in a new pod with labels (k=v,k=v) and deletes it after.
-func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs []string) (string, error) {
+func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs []string, opts testPod) (string, error) {
 	image, err := stationImage(ctx)
 	if err != nil {
 		return "", err
@@ -144,10 +154,10 @@ func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs [
 	// The counter keeps the pods of one run apart, the random part apart from an earlier run's
 	// that may still be terminating.
 	pod := fmt.Sprintf("%s-%d-%d", fixtureName, rand.IntN(100000), testPods.Add(1))
-	// The delay gives the network time to apply the pod's policies before the request.
-	args := append([]string{"run", pod, "-n", namespace, "--image=" + image, "--restart=Never",
-		"--labels=" + labels + ",aocn-verify=probe", "--command", "--"}, probeArgs...)
-	args = append(args, "--delay", "2s")
+	args, err := testPodArgs(pod, namespace, image, labels, probeArgs, opts)
+	if err != nil {
+		return "", err
+	}
 	if _, err := kubectl.Run(ctx, args...); err != nil {
 		return "", err
 	}
@@ -161,6 +171,44 @@ func probeFromTestPod(ctx context.Context, namespace, labels string, probeArgs [
 	}
 	out, err := kubectl.Run(ctx, "logs", "-n", namespace, pod)
 	return lastLine(out), err
+}
+
+// testPodArgs is kubectl run's arguments for a test pod. The overrides are a strategic merge,
+// so the container is matched by its name, which kubectl run sets to the pod's.
+//
+// The pod is never ready: it can carry a workload's labels, and a Service that selects them
+// would otherwise send its traffic to the pod, which doesn't answer, while checks run at the
+// same time. Nothing waits for it to be ready, only for it to finish. The station image has
+// no shell, so the probe connects to a port nothing listens on.
+func testPodArgs(pod, namespace, image, labels string, probeArgs []string, opts testPod) ([]string, error) {
+	container := map[string]any{
+		"name":           pod,
+		"readinessProbe": map[string]any{"tcpSocket": map[string]any{"port": 1}, "periodSeconds": 60},
+	}
+	spec := map[string]any{"containers": []map[string]any{container}}
+	if opts.Account != "" {
+		spec["serviceAccountName"] = opts.Account
+	}
+	if opts.TokenAudience != "" {
+		container["volumeMounts"] = []map[string]any{{"name": "aocn-token", "mountPath": tokenDir, "readOnly": true}}
+		spec["volumes"] = []map[string]any{{
+			"name": "aocn-token",
+			"projected": map[string]any{"sources": []map[string]any{{
+				"serviceAccountToken": map[string]any{"audience": opts.TokenAudience, "expirationSeconds": 600, "path": "token"},
+			}}},
+		}}
+	}
+	overrides, err := json.Marshal(map[string]any{"spec": spec})
+	if err != nil {
+		return nil, err
+	}
+	// The delay gives the network time to apply the pod's policies before the request.
+	args := []string{"run", pod, "-n", namespace, "--image=" + image, "--restart=Never",
+		"--labels=" + strings.TrimPrefix(labels+",aocn-verify=probe", ","),
+		"--override-type=strategic", "--overrides=" + string(overrides),
+		"--command", "--"}
+	args = append(args, probeArgs...)
+	return append(args, "--delay", "2s"), nil
 }
 
 // stationImage is the station image that already runs in the cluster, so test pods don't
