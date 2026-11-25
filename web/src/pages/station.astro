@@ -1,0 +1,221 @@
+---
+// The station map: what the station is made of, as last winter's engineer drew it before
+// flying out. POLARIS-7 hands it over. Only the station's own parts, the ones that are there
+// before the crew starts building: nothing a door adds, so the map spoils nothing.
+//
+// The drawing is an inline SVG, so it takes its colors from the design tokens. The list under
+// it says the same in words, for screen readers and small screens.
+import TextPage from '../components/TextPage.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="the station"
+  description="The station map: POLARIS-7, the heating controller, the outside sensors, the satellite uplink, the generator and the crew's labs, as last winter's engineer left them."
+  pola={{ mood: 'neutral', message: 'Keep the map. The crew will make it wrong soon enough.' }}
+>
+  <TextPage command="$ cat handover/station-map.txt" title="the station">
+    <p>
+      Last winter's engineer drew this map before flying out. The notes are mine. They left everything alone all
+      season, so it is still accurate. For now.
+    </p>
+
+    <figure class="stationMap">
+      <!-- Scrolls sideways on a narrow screen instead of shrinking the labels until nobody can read them.
+           Focusable, so the keyboard can scroll it too. -->
+      <div class="stationMapScroll" tabindex="0" role="group" aria-label="station map">
+        <svg
+          class="stationMapDrawing"
+          viewBox="0 0 640 452"
+          role="img"
+          aria-labelledby="stationMapTitle stationMapDesc"
+        >
+          <title id="stationMapTitle">The station map</title>
+          <desc id="stationMapDesc">
+            Outside: the sensors and the satellite uplink. Inside the station: POLARIS-7 in the middle, the heating
+            controller, the crew's labs and quarters, and the generator. The sensors send their readings to POLARIS-7,
+            the heating controller gets the outside temperature from her, the crew runs its projects on her, the
+            generator powers her, and she talks to the mainland through the uplink.
+          </desc>
+          <defs>
+            <marker id="stationMapArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path class="stationMapArrowHead" d="M0 0 L10 5 L0 10 z" />
+            </marker>
+          </defs>
+
+          <text class="stationMapArea" x="24" y="30">outside</text>
+          <rect class="stationMapWall" x="12" y="136" width="616" height="304" />
+          <text class="stationMapArea" x="28" y="428">the station</text>
+
+          <!-- Who talks to whom, drawn first so the boxes sit on top of the lines. -->
+          <path class="stationMapLink" d="M108 108 V150 H290 V174" marker-end="url(#stationMapArrow)" />
+          <text class="stationMapLinkLabel" x="116" y="130">readings</text>
+          <path class="stationMapLink" d="M360 176 V150 H541 V110" marker-end="url(#stationMapArrow)" />
+          <!-- Above the wall, clear of its line. -->
+          <text class="stationMapLinkLabel" x="533" y="126" text-anchor="end">to the mainland</text>
+          <path class="stationMapLink" d="M250 214 H176" marker-end="url(#stationMapArrow)" />
+          <!-- Two lines: the gap between the boxes is too narrow for one. -->
+          <text class="stationMapLinkLabel" x="213" y="190" text-anchor="middle">outside</text>
+          <text class="stationMapLinkLabel" x="213" y="206" text-anchor="middle">temp</text>
+          <path class="stationMapLink" d="M466 214 H392" marker-end="url(#stationMapArrow)" />
+          <text class="stationMapLinkLabel" x="428" y="206" text-anchor="middle">projects</text>
+          <path class="stationMapLink" d="M320 352 V254" marker-end="url(#stationMapArrow)" />
+          <text class="stationMapLinkLabel" x="328" y="306">power</text>
+
+          <rect class="stationMapBox" x="24" y="48" width="168" height="60" />
+          <text class="stationMapName" x="38" y="74">outside sensors</text>
+          <text class="stationMapNote" x="38" y="94">temperature, wind</text>
+
+          <rect class="stationMapBox" x="448" y="48" width="168" height="60" />
+          <text class="stationMapName" x="462" y="74">satellite uplink</text>
+          <text class="stationMapNote" x="462" y="94">the only line out</text>
+
+          <rect class="stationMapBox" x="24" y="184" width="152" height="60" />
+          <text class="stationMapName" x="38" y="210">heating</text>
+          <text class="stationMapName" x="38" y="228">controller</text>
+
+          <rect class="stationMapBox stationMapBoxPola" x="250" y="176" width="140" height="76" />
+          <text class="stationMapName stationMapNamePola" x="264" y="202">POLARIS-7</text>
+          <text class="stationMapNote" x="264" y="222">runs it all, on</text>
+          <text class="stationMapNote" x="264" y="238">a small cluster</text>
+
+          <rect class="stationMapBox" x="466" y="184" width="150" height="60" />
+          <text class="stationMapName" x="480" y="210">labs &amp; quarters</text>
+          <text class="stationMapNote" x="480" y="228">the crew</text>
+
+          <rect class="stationMapBox" x="250" y="352" width="140" height="60" />
+          <text class="stationMapName" x="264" y="378">generator</text>
+          <text class="stationMapNote" x="264" y="396">power for all</text>
+        </svg>
+      </div>
+      <figcaption class="stationMapCaption">The station, as handed over.</figcaption>
+    </figure>
+
+    <h2>what's where</h2>
+    <p>
+      On my cluster, the station's own parts run in the <code>station</code> namespace, and the crew's projects in
+      <code>crew</code>. What exactly runs there changes with every door: its README says.
+    </p>
+    <ul>
+      <li>
+        <strong>POLARIS-7.</strong> Me. I run the station, on a small Kubernetes cluster. Everything else on this map
+        talks to me, or through me.
+      </li>
+      <li>
+        <strong>outside sensors.</strong> On the mast. Temperature and wind, every few seconds. Everyone wants their
+        numbers.
+      </li>
+      <li>
+        <strong>heating controller.</strong> Keeps the inside warm. It needs the outside temperature for that. It is
+        the most important thing on this station. Please treat it that way.
+      </li>
+      <li>
+        <strong>generator.</strong> Power for everything, me included. Hardware, not on my cluster. Do not unplug
+        anything to charge a phone.
+      </li>
+      <li>
+        <strong>satellite uplink.</strong> The only line to the mainland. Slow, and shared by everyone.
+      </li>
+      <li>
+        <strong>labs &amp; quarters.</strong> Where the crew lives and works. Research is paused for the winter.
+        Their projects are not. They run on my cluster, in <code>crew</code>.
+      </li>
+    </ul>
+  </TextPage>
+</BaseLayout>
+
+<style>
+  /* On a panel, so the drawing reads the same wherever the aurora is behind it. */
+  .stationMap {
+    display: grid;
+    gap: var(--space-3);
+    margin-block: var(--space-4);
+  }
+
+  .stationMapScroll {
+    overflow-x: auto;
+    padding: var(--space-4);
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-screen);
+  }
+
+  .stationMapScroll:focus-visible {
+    outline: 1px solid var(--color-aurora);
+    outline-offset: var(--space-1);
+  }
+
+  /* The labels take their color from color, and fill follows it: tools that read a text's
+     color, like the contrast test, see what's drawn. */
+
+  /* Below this width the labels would get too small to read: the map scrolls instead. */
+  .stationMapDrawing {
+    display: block;
+    width: 100%;
+    min-width: 560px;
+    height: auto;
+    font-family: inherit;
+  }
+
+  .stationMapCaption {
+    color: var(--color-muted);
+    font-size: var(--font-size-small);
+    line-height: var(--line-height-small);
+  }
+
+  .stationMapWall {
+    fill: none;
+    stroke: var(--color-line-strong);
+    stroke-dasharray: 6 4;
+    rx: var(--radius-screen);
+  }
+
+  .stationMapBox {
+    fill: var(--color-bg);
+    stroke: var(--color-line-strong);
+  }
+
+  .stationMapBoxPola {
+    stroke: var(--color-aurora);
+  }
+
+  .stationMapArea {
+    color: var(--color-muted);
+    fill: currentColor;
+    font-size: var(--font-size-caps);
+    letter-spacing: var(--letter-spacing-caps);
+    text-transform: uppercase;
+  }
+
+  .stationMapName {
+    color: var(--color-text);
+    fill: currentColor;
+    font-size: var(--font-size-body);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .stationMapNamePola {
+    color: var(--color-aurora);
+  }
+
+  .stationMapNote {
+    color: var(--color-text-soft);
+    fill: currentColor;
+    font-size: var(--font-size-small);
+  }
+
+  .stationMapLink {
+    fill: none;
+    stroke: var(--color-dim);
+  }
+
+  .stationMapArrowHead {
+    fill: var(--color-dim);
+  }
+
+  .stationMapLinkLabel {
+    color: var(--color-muted);
+    fill: currentColor;
+    font-size: var(--font-size-small);
+  }
+</style>
