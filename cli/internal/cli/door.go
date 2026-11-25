@@ -532,7 +532,7 @@ it signs you in.`,
 			}
 			printHint(out, screenHere().styled, next.Hint, state.Total, state.Hints[next.Hint-1])
 			fmt.Fprintln(out)
-			fmt.Fprintln(out, hintCostLine(cost, state))
+			fmt.Fprintln(out, hintCostLine(next.Hint, cost, state))
 			return nil
 		},
 	}
@@ -563,8 +563,9 @@ func printHint(out io.Writer, styled bool, n, total int, hint string) {
 	}
 }
 
-// hintCostLine says what opening a hint cost, and what's left.
-func hintCostLine(cost int, state api.HintState) string {
+// hintCostLine says what opening hint n cost, how to see it again (free, it's open now), and
+// what's left.
+func hintCostLine(n, cost int, state api.HintState) string {
 	var paid string
 	switch {
 	case cost > 0:
@@ -574,10 +575,14 @@ func hintCostLine(cost int, state api.HintState) string {
 	default:
 		paid = "Free."
 	}
-	if state.Next == nil {
-		return paid + " That was the last hint."
+	again := fmt.Sprintf(" aocn hint %d shows it again.", n)
+	if cost > 0 {
+		again = fmt.Sprintf(" aocn hint %d shows it again for free.", n)
 	}
-	return paid + " Stuck again? aocn hint opens the next one."
+	if state.Next == nil {
+		return paid + again + " That was the last hint."
+	}
+	return paid + again + " Stuck again? aocn hint opens the next one."
 }
 
 // scoreLine says what a fixed door is worth: "95 points (1 hint), 1 failed verify." The
