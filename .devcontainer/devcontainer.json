@@ -4,7 +4,7 @@
   // CLI and the settings. A new image version goes in here; .github/scripts/devcontainers.sh
   // then writes it into every door's.
   "name": "Advent of Cloud Native · any door",
-  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.5.2",
+  "image": "ghcr.io/katharinasick/aocn-devcontainer:0.5.3",
   // Players only see their door, not this repo: the file tree and the terminal start in
   // play/, and aocn open puts the door's files right there. play/ is committed, so it's there
   // in every clone.
