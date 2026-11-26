@@ -69,16 +69,21 @@ func TestHintCostLine(t *testing.T) {
 	tests := []struct {
 		n     int
 		cost  int
+		asked bool
 		state api.HintState
 		want  string
 	}{
-		{2, 15, api.HintState{Next: next}, "That cost 15 points. aocn hint 2 shows it again for free. Stuck again? aocn hint opens the next one."},
-		{3, 30, api.HintState{}, "That cost 30 points. aocn hint 3 shows it again for free. That was the last hint."},
-		{2, 0, api.HintState{Next: next, Fixed: true}, "Free: you fixed this door already. aocn hint 2 shows it again. Stuck again? aocn hint opens the next one."},
+		// Asked first: the question said what it costs.
+		{2, 15, true, api.HintState{Next: next}, "aocn hint 2 shows it again for free. Stuck again? aocn hint opens the next one."},
+		{3, 30, true, api.HintState{}, "aocn hint 3 shows it again for free. That was the last hint."},
+		// With --yes, nothing said it yet.
+		{2, 15, false, api.HintState{Next: next}, "That cost 15 points. aocn hint 2 shows it again for free. Stuck again? aocn hint opens the next one."},
+		{2, 0, false, api.HintState{Next: next, Fixed: true}, "Free: you fixed this door already. aocn hint 2 shows it again. Stuck again? aocn hint opens the next one."},
+		{1, 0, false, api.HintState{Next: next}, "Free. aocn hint 1 shows it again. Stuck again? aocn hint opens the next one."},
 	}
 	for _, tt := range tests {
-		if got := hintCostLine(tt.n, tt.cost, tt.state); got != tt.want {
-			t.Errorf("%d, %d, %+v: got %q, want %q", tt.n, tt.cost, tt.state, got, tt.want)
+		if got := hintCostLine(tt.n, tt.cost, tt.asked, tt.state); got != tt.want {
+			t.Errorf("%d, %d, %v, %+v: got %q, want %q", tt.n, tt.cost, tt.asked, tt.state, got, tt.want)
 		}
 	}
 }
