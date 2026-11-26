@@ -512,7 +512,8 @@ it signs you in.`,
 			}
 
 			next := *state.Next
-			if next.Cost > 0 && !yes {
+			asked := next.Cost > 0 && !yes
+			if asked {
 				question := fmt.Sprintf("Hint %d of %d costs %d points.", next.Hint, state.Total, next.Cost)
 				if !term.IsTerminal(int(os.Stdin.Fd())) {
 					return fmt.Errorf("%s To open it, run: aocn hint --yes", question)
@@ -532,7 +533,7 @@ it signs you in.`,
 			}
 			printHint(out, screenHere().styled, next.Hint, state.Total, state.Hints[next.Hint-1])
 			fmt.Fprintln(out)
-			fmt.Fprintln(out, hintCostLine(next.Hint, cost, state))
+			fmt.Fprintln(out, hintCostLine(next.Hint, cost, asked, state))
 			return nil
 		},
 	}
@@ -564,20 +565,23 @@ func printHint(out io.Writer, styled bool, n, total int, hint string) {
 }
 
 // hintCostLine says what opening hint n cost, how to see it again (free, it's open now), and
-// what's left.
-func hintCostLine(n, cost int, state api.HintState) string {
+// what's left. If asked, the question before the hint said what it costs, so it doesn't say
+// it twice.
+func hintCostLine(n, cost int, asked bool, state api.HintState) string {
 	var paid string
 	switch {
+	case cost > 0 && asked:
+		// The question said it already.
 	case cost > 0:
-		paid = fmt.Sprintf("That cost %d points.", cost)
+		paid = fmt.Sprintf("That cost %d points. ", cost)
 	case state.Fixed:
-		paid = "Free: you fixed this door already."
+		paid = "Free: you fixed this door already. "
 	default:
-		paid = "Free."
+		paid = "Free. "
 	}
-	again := fmt.Sprintf(" aocn hint %d shows it again.", n)
+	again := fmt.Sprintf("aocn hint %d shows it again.", n)
 	if cost > 0 {
-		again = fmt.Sprintf(" aocn hint %d shows it again for free.", n)
+		again = fmt.Sprintf("aocn hint %d shows it again for free.", n)
 	}
 	if state.Next == nil {
 		return paid + again + " That was the last hint."
